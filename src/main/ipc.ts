@@ -2,7 +2,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { readFile } from 'fs/promises'
 import { getDb, pingDb } from './db'
 import { Repository } from './repository'
-import type { Track } from '../shared/types'
+import type { Track, TrackPoint } from '../shared/types'
 
 export function registerIpcHandlers(): void {
   const repository = new Repository(getDb())
@@ -31,4 +31,8 @@ export function registerIpcHandlers(): void {
     const gpxRaw = await readFile(result.filePaths[0], 'utf-8')
     return repository.importGpxTrack(tripId, gpxRaw)
   })
+
+  ipcMain.handle('tracks:getPoints', (_event, trackId: number): TrackPoint[] =>
+    repository.getTrackPoints(trackId)
+  )
 }
