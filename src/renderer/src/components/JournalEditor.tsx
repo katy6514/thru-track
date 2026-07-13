@@ -89,7 +89,7 @@ function JournalEditor({ track, onBack }: JournalEditorProps): React.JSX.Element
   return (
     <div className="journal-editor">
       <button type="button" className="back-link" onClick={onBack}>
-        &larr; Back to tracks
+        &larr; Back to map
       </button>
 
       <h1>{track.name}</h1>
