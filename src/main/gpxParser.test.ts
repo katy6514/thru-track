@@ -81,6 +81,19 @@ describe('parseGpx', () => {
     ])
   })
 
+  it('treats a purely numeric track name (e.g. a Garmin-style timestamp) as a string, not a number', () => {
+    const xml = gpx(`
+      <name>20260701140000</name>
+      <trkseg>
+        <trkpt lat="46.85" lon="-121.75"><time>2026-07-01T14:00:00Z</time></trkpt>
+      </trkseg>
+    `)
+
+    const result = parseGpx(xml)
+
+    expect(result.name).toBe('20260701140000')
+  })
+
   it('treats a missing elevation as null rather than throwing', () => {
     const xml = gpx(`
       <trkseg>

@@ -18,7 +18,10 @@ interface RawTrkpt {
 }
 
 interface RawTrk {
-  name?: string
+  // fast-xml-parser coerces tag text into a number/boolean when it looks like one
+  // (e.g. a Garmin-style numeric track name like "20260701140000"), so this is not
+  // guaranteed to be a string at runtime despite GPX's <name> always being text.
+  name?: string | number | boolean
   trkseg?: { trkpt?: RawTrkpt[] }[]
 }
 
@@ -49,7 +52,8 @@ export function parseGpx(xml: string): ParsedGpxTrack {
     throw new GpxParseError('No <trk> track found in GPX file')
   }
 
-  const name = tracks[0].name?.trim() || null
+  const rawName = tracks[0].name
+  const name = rawName !== undefined ? String(rawName).trim() || null : null
   const points: TrackPoint[] = []
 
   for (const trk of tracks) {
