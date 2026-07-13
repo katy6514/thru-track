@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { pingDb } from './db'
+import { registerIpcHandlers } from './ipc'
 
 function createWindow(): void {
   // Create the browser window.
@@ -56,8 +56,7 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
-  // Proves the renderer -> main -> SQLite -> renderer round trip works end-to-end
-  ipcMain.handle('db:ping', () => pingDb())
+  registerIpcHandlers()
 
   createWindow()
 

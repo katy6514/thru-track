@@ -1,42 +1,7 @@
-import { useState } from 'react'
-import Versions from './components/Versions'
-import electronLogo from './assets/electron.svg'
+import TripList from './components/TripList'
 
 function App(): React.JSX.Element {
-  const [dbResult, setDbResult] = useState<string>('')
-
-  const pingDb = async (): Promise<void> => {
-    const { dbPath, sqliteVersion } = await window.api.pingDb()
-    setDbResult(`SQLite ${sqliteVersion} @ ${dbPath}`)
-  }
-
-  return (
-    <>
-      <img alt="logo" className="logo" src={electronLogo} />
-      <div className="creator">Powered by electron-vite</div>
-      <div className="text">
-        Build an Electron app with <span className="react">React</span>
-        &nbsp;and <span className="ts">TypeScript</span>
-      </div>
-      <p className="tip">
-        Please try pressing <code>F12</code> to open the devTool
-      </p>
-      <div className="actions">
-        <div className="action">
-          <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">
-            Documentation
-          </a>
-        </div>
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={pingDb}>
-            Ping SQLite (via main process)
-          </a>
-        </div>
-      </div>
-      {dbResult && <p className="tip">{dbResult}</p>}
-      <Versions></Versions>
-    </>
-  )
+  return <TripList />
 }
 
 export default App
