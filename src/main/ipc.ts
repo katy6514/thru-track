@@ -35,4 +35,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('tracks:getPoints', (_event, trackId: number): TrackPoint[] =>
     repository.getTrackPoints(trackId)
   )
+
+  ipcMain.handle('entries:get', (_event, trackId: number) => repository.getEntry(trackId))
+  ipcMain.handle('entries:save', (_event, trackId: number, text: string) =>
+    repository.saveEntry(trackId, text)
+  )
 }

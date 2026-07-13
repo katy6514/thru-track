@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Trip, Track } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import TrackDetail from './TrackDetail'
+import JournalEditor from './JournalEditor'
 
 interface TrackListProps {
   trip: Trip
@@ -13,6 +14,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(false)
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
+  const [showJournal, setShowJournal] = useState(false)
 
   const refresh = async (): Promise<void> => {
     setTracks(await window.api.tracks.list(trip.id))
@@ -35,8 +37,18 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }
 
+  if (selectedTrack && showJournal) {
+    return <JournalEditor track={selectedTrack} onBack={() => setShowJournal(false)} />
+  }
+
   if (selectedTrack) {
-    return <TrackDetail track={selectedTrack} onBack={() => setSelectedTrack(null)} />
+    return (
+      <TrackDetail
+        track={selectedTrack}
+        onBack={() => setSelectedTrack(null)}
+        onWriteJournal={() => setShowJournal(true)}
+      />
+    )
   }
 
   return (

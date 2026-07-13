@@ -8,6 +8,7 @@ import { splitTrackIntoSegments } from '../splitTrackSegments'
 interface TrackDetailProps {
   track: Track
   onBack: () => void
+  onWriteJournal: () => void
 }
 
 function renderTrackMap(container: HTMLDivElement, points: TrackPoint[]): L.Map {
@@ -41,7 +42,7 @@ function renderTrackMap(container: HTMLDivElement, points: TrackPoint[]): L.Map 
   return map
 }
 
-function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
+function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const [error, setError] = useState('')
@@ -83,6 +84,12 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
       </button>
 
       <h1>{track.name}</h1>
+
+      <div className="track-detail-actions">
+        <button type="button" onClick={onWriteJournal}>
+          Write journal entry
+        </button>
+      </div>
 
       {error && <p className="error">{error}</p>}
       {pointCount === 0 && <p className="empty">This track has no GPS points to show on the map.</p>}

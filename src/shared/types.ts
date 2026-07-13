@@ -19,3 +19,11 @@ export interface TrackPoint {
   elevation: number | null
   timestamp: string
 }
+
+// One plain-text journal entry per track (v1 is plain text only, no markdown/rich text).
+export interface Entry {
+  id: number
+  trackId: number
+  text: string
+  updatedAt: string
+}
