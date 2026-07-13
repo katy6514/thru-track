@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { Trip, Track } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import TrackDetail from './TrackDetail'
@@ -15,6 +15,10 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   const [importing, setImporting] = useState(false)
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
   const [showJournal, setShowJournal] = useState(false)
+  // Set when a GPX has no timestamps and no date could be inferred from its filename —
+  // the hiker needs to supply the day this track was hiked before it's actually imported.
+  const [pendingGpxRaw, setPendingGpxRaw] = useState<string | null>(null)
+  const [dateInput, setDateInput] = useState('')
 
   const refresh = async (): Promise<void> => {
     setTracks(await window.api.tracks.list(trip.id))
@@ -28,8 +32,29 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     setError('')
     setImporting(true)
     try {
-      const track = await window.api.tracks.importGpx(trip.id)
-      if (track) await refresh()
+      const result = await window.api.tracks.importGpx(trip.id)
+      if (result && 'needsDate' in result) {
+        setPendingGpxRaw(result.gpxRaw)
+        setDateInput('')
+      } else if (result) {
+        await refresh()
+      }
+    } catch (err) {
+      setError(cleanErrorMessage(err))
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleConfirmDate = async (e: FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (!pendingGpxRaw || !dateInput) return
+    setError('')
+    setImporting(true)
+    try {
+      await window.api.tracks.importGpxWithDate(trip.id, pendingGpxRaw, dateInput)
+      setPendingGpxRaw(null)
+      await refresh()
     } catch (err) {
       setError(cleanErrorMessage(err))
     } finally {
@@ -60,10 +85,34 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
       <h1>{trip.name}</h1>
 
       <div className="track-list-actions">
-        <button type="button" onClick={handleImport} disabled={importing}>
+        <button type="button" onClick={handleImport} disabled={importing || !!pendingGpxRaw}>
           {importing ? 'Importing…' : 'Import GPX track'}
         </button>
       </div>
+
+      {pendingGpxRaw && (
+        <form className="date-prompt" onSubmit={handleConfirmDate}>
+          <label htmlFor="track-date-input">
+            This GPX file has no timestamps — what day was it hiked?
+          </label>
+          <div className="date-prompt-controls">
+            <input
+              id="track-date-input"
+              type="date"
+              value={dateInput}
+              onChange={(e) => setDateInput(e.target.value)}
+              required
+              autoFocus
+            />
+            <button type="submit" disabled={importing}>
+              Import
+            </button>
+            <button type="button" onClick={() => setPendingGpxRaw(null)} disabled={importing}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       {error && <p className="error">{error}</p>}
 

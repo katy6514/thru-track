@@ -124,10 +124,56 @@ describe('parseGpx', () => {
     expect(() => parseGpx(xml)).toThrow(GpxParseError)
   })
 
-  it('throws GpxParseError when a track point is missing a timestamp', () => {
+  it('treats a track with no <time> on any point as timeless, not an error', () => {
+    // e.g. a route retraced after the fact in CalTopo rather than recorded live with GPS.
     const xml = gpx(`
       <trkseg>
         <trkpt lat="46.85" lon="-121.75"><ele>1200</ele></trkpt>
+        <trkpt lat="46.86" lon="-121.76"><ele>1210</ele></trkpt>
+      </trkseg>
+    `)
+
+    const result = parseGpx(xml)
+
+    expect(result.points).toEqual([
+      { lat: 46.85, lng: -121.75, elevation: 1200, timestamp: null },
+      { lat: 46.86, lng: -121.76, elevation: 1210, timestamp: null }
+    ])
+  })
+
+  it('preserves file order (not sorted) for a timeless track', () => {
+    const xml = gpx(`
+      <trkseg>
+        <trkpt lat="3" lon="3"><ele>1</ele></trkpt>
+        <trkpt lat="1" lon="1"><ele>2</ele></trkpt>
+        <trkpt lat="2" lon="2"><ele>3</ele></trkpt>
+      </trkseg>
+    `)
+
+    const result = parseGpx(xml)
+
+    expect(result.points.map((p) => p.lat)).toEqual([3, 1, 2])
+  })
+
+  it('treats a track with SOME but not all points timestamped as fully timeless', () => {
+    // Partial timestamps are more misleading to interpolate around than none at all, and real
+    // exporters don't produce this shape — it's treated the same as a fully timeless track.
+    const xml = gpx(`
+      <trkseg>
+        <trkpt lat="46.85" lon="-121.75"><time>2026-07-01T14:00:00Z</time></trkpt>
+        <trkpt lat="46.86" lon="-121.76"></trkpt>
+      </trkseg>
+    `)
+
+    const result = parseGpx(xml)
+
+    expect(result.points.every((p) => p.timestamp === null)).toBe(true)
+  })
+
+  it('throws GpxParseError when a <time> value is present but unparseable', () => {
+    const xml = gpx(`
+      <trkseg>
+        <trkpt lat="46.85" lon="-121.75"><time>not-a-real-timestamp</time></trkpt>
       </trkseg>
     `)
     expect(() => parseGpx(xml)).toThrow(GpxParseError)

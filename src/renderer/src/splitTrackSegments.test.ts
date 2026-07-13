@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { splitTrackIntoSegments } from './splitTrackSegments'
 import type { TrackPoint } from '../../shared/types'
 
-function point(timestamp: string, lat = 0, lng = 0): TrackPoint {
+function point(timestamp: string | null, lat = 0, lng = 0): TrackPoint {
   return { lat, lng, elevation: null, timestamp }
 }
 
@@ -59,5 +59,10 @@ describe('splitTrackIntoSegments', () => {
 
   it('returns an empty array for an empty input', () => {
     expect(splitTrackIntoSegments([])).toEqual([])
+  })
+
+  it('returns a single unbroken segment for a timeless track, regardless of point count', () => {
+    const points = [point(null, 1, 1), point(null, 2, 2), point(null, 3, 3)]
+    expect(splitTrackIntoSegments(points)).toEqual([points])
   })
 })
