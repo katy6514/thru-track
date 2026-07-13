@@ -4,10 +4,22 @@ import Database from 'better-sqlite3'
 
 let db: Database.Database | null = null
 
-function getDb(): Database.Database {
+export function migrate(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS trips (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `)
+}
+
+export function getDb(): Database.Database {
   if (!db) {
     const dbPath = join(app.getPath('userData'), 'thru-track.db')
     db = new Database(dbPath)
+    migrate(db)
   }
   return db
 }
