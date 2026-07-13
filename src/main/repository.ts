@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import type { Trip, Track, TrackPoint } from '../shared/types'
+import type { Trip, Track, TrackPoint, Entry } from '../shared/types'
 import { parseGpx } from './gpxParser'
 
 interface TripRow {
@@ -27,6 +27,13 @@ interface TrackPointRow {
   timestamp: string
 }
 
+interface EntryRow {
+  id: number
+  track_id: number
+  text: string
+  updated_at: string
+}
+
 function toTrip(row: TripRow): Trip {
   return { id: row.id, name: row.name, createdAt: row.created_at, updatedAt: row.updated_at }
 }
@@ -37,6 +44,10 @@ function toTrack(row: TrackRow): Track {
 
 function toTrackPoint(row: TrackPointRow): TrackPoint {
   return { lat: row.lat, lng: row.lng, elevation: row.elevation, timestamp: row.timestamp }
+}
+
+function toEntry(row: EntryRow): Entry {
+  return { id: row.id, trackId: row.track_id, text: row.text, updatedAt: row.updated_at }
 }
 
 function requireName(name: string): string {
@@ -118,5 +129,27 @@ export class Repository {
       .prepare('SELECT * FROM track_points WHERE track_id = ? ORDER BY timestamp ASC')
       .all(trackId) as TrackPointRow[]
     return rows.map(toTrackPoint)
+  }
+
+  getEntry(trackId: number): Entry | null {
+    const row = this.db.prepare('SELECT * FROM entries WHERE track_id = ?').get(trackId) as
+      | EntryRow
+      | undefined
+    return row ? toEntry(row) : null
+  }
+
+  // There's exactly one entry per track, so this is an upsert: create the row if it doesn't
+  // exist yet, otherwise update it in place. Empty text is a valid, persistable state (e.g. a
+  // hiker who opened the editor but hasn't written anything, or cleared it out) — it is not
+  // treated as "no entry" the way an empty trip name is rejected.
+  saveEntry(trackId: number, text: string): Entry {
+    const now = new Date().toISOString()
+    this.db
+      .prepare(
+        `INSERT INTO entries (track_id, text, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(track_id) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at`
+      )
+      .run(trackId, text, now)
+    return toEntry(this.db.prepare('SELECT * FROM entries WHERE track_id = ?').get(trackId) as EntryRow)
   }
 }

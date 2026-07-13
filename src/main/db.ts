@@ -35,6 +35,13 @@ export function migrate(database: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_track_points_track_id ON track_points(track_id);
+
+    CREATE TABLE IF NOT EXISTS entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      track_id INTEGER NOT NULL UNIQUE REFERENCES tracks(id),
+      text TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `)
 }
 

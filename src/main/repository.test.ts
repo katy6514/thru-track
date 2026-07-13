@@ -129,3 +129,66 @@ describe('Repository track import', () => {
     expect(() => repo.importGpxTrack(999, sampleGpx())).toThrow()
   })
 })
+
+describe('Repository journal entries', () => {
+  let repo: Repository
+  let trackId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    const tripId = repo.createTrip('PCT 2026').id
+    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+  })
+
+  it('returns null for a track with no entry yet', () => {
+    expect(repo.getEntry(trackId)).toBeNull()
+  })
+
+  it('creates a new entry on first save', () => {
+    const entry = repo.saveEntry(trackId, 'Long climb, great views at the top.')
+    expect(entry.trackId).toBe(trackId)
+    expect(entry.text).toBe('Long climb, great views at the top.')
+    expect(entry.id).toBeTypeOf('number')
+
+    expect(repo.getEntry(trackId)).toEqual(entry)
+  })
+
+  it('upserts: saving again updates the same row instead of creating a second one', () => {
+    const first = repo.saveEntry(trackId, 'Draft one.')
+    const second = repo.saveEntry(trackId, 'Final version of the entry.')
+
+    expect(second.id).toBe(first.id)
+    expect(second.text).toBe('Final version of the entry.')
+    expect(repo.getEntry(trackId)?.text).toBe('Final version of the entry.')
+  })
+
+  it('allows saving empty text (clearing an entry is a valid state, not an error)', () => {
+    repo.saveEntry(trackId, 'Something to say.')
+    const cleared = repo.saveEntry(trackId, '')
+    expect(cleared.text).toBe('')
+    expect(repo.getEntry(trackId)?.text).toBe('')
+  })
+
+  it('keeps entries for different tracks independent', () => {
+    const otherTrackId = repo.importGpxTrack(
+      repo.createTrip('Other Trip').id,
+      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
+    ).id
+
+    repo.saveEntry(trackId, 'Entry for track one.')
+    repo.saveEntry(otherTrackId, 'Entry for track two.')
+
+    expect(repo.getEntry(trackId)?.text).toBe('Entry for track one.')
+    expect(repo.getEntry(otherTrackId)?.text).toBe('Entry for track two.')
+  })
+
+  it('throws when saving an entry for a track that does not exist', () => {
+    expect(() => repo.saveEntry(999, 'orphan entry')).toThrow()
+  })
+
+  it('returns null for a track id that does not exist', () => {
+    expect(repo.getEntry(999)).toBeNull()
+  })
+})

@@ -5,9 +5,10 @@ import { cleanErrorMessage } from '../cleanErrorMessage'
 interface TrackListProps {
   trip: Trip
   onBack: () => void
+  onSelectTrack: (track: Track) => void
 }
 
-function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
+function TrackList({ trip, onBack, onSelectTrack }: TrackListProps): React.JSX.Element {
   const [tracks, setTracks] = useState<Track[]>([])
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(false)
@@ -55,7 +56,13 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
         <ul className="tracks">
           {tracks.map((track) => (
             <li key={track.id} className="track-row">
-              <span className="track-name">{track.name}</span>
+              <button
+                type="button"
+                className="track-name"
+                onClick={() => onSelectTrack(track)}
+              >
+                {track.name}
+              </button>
               <span className="track-date">{track.date}</span>
             </li>
           ))}

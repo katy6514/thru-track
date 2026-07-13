@@ -31,4 +31,9 @@ export function registerIpcHandlers(): void {
     const gpxRaw = await readFile(result.filePaths[0], 'utf-8')
     return repository.importGpxTrack(tripId, gpxRaw)
   })
+
+  ipcMain.handle('entries:get', (_event, trackId: number) => repository.getEntry(trackId))
+  ipcMain.handle('entries:save', (_event, trackId: number, text: string) =>
+    repository.saveEntry(trackId, text)
+  )
 }
