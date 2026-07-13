@@ -24,7 +24,44 @@ interface TrackPointRow {
   lat: number
   lng: number
   elevation: number | null
-  timestamp: string
+  timestamp: string | null
+}
+
+// Thrown when a track has no timestamps (a CalTopo-style retrace rather than a live GPS
+// recording) and no date could be inferred from its filename — the caller (IPC layer) must
+// prompt the hiker for a date and retry with an explicit override.
+export class DateRequiredError extends Error {}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function isPlausibleDate(year: number, month: number, day: number): boolean {
+  return year >= 2000 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+}
+
+// Tries a few common date patterns hikers/tools actually use in exported filenames
+// (e.g. CalTopo's default export naming, or a hiker renaming the file themselves).
+// Deliberately conservative: a plausible year/month/day beats a blind regex match, since a
+// filename could otherwise contain an unrelated 8-digit run.
+export function inferDateFromFilename(filename: string): string | null {
+  const patterns: RegExp[] = [
+    /(\d{4})-(\d{2})-(\d{2})/, // 2026-07-01
+    /(\d{4})_(\d{2})_(\d{2})/, // 2026_07_01
+    /(\d{4})(\d{2})(\d{2})/ // 20260701
+  ]
+
+  for (const pattern of patterns) {
+    const match = filename.match(pattern)
+    if (!match) continue
+    const [, yearStr, monthStr, dayStr] = match
+    const year = Number(yearStr)
+    const month = Number(monthStr)
+    const day = Number(dayStr)
+    if (isPlausibleDate(year, month, day)) {
+      return `${yearStr}-${monthStr}-${dayStr}`
+    }
+  }
+
+  return null
 }
 
 interface EntryRow {
@@ -92,9 +129,30 @@ export class Repository {
     if (info.changes === 0) throw new Error(`Trip ${id} not found`)
   }
 
-  importGpxTrack(tripId: number, gpxRaw: string): Track {
+  importGpxTrack(
+    tripId: number,
+    gpxRaw: string,
+    options: { filename?: string; date?: string } = {}
+  ): Track {
     const parsed = parseGpx(gpxRaw)
-    const date = parsed.points[0].timestamp.slice(0, 10)
+    const firstTimestamp = parsed.points[0].timestamp
+
+    let date: string
+    if (firstTimestamp !== null) {
+      // A live-recorded track's own GPS time is authoritative — a filename/override is ignored.
+      date = firstTimestamp.slice(0, 10)
+    } else if (options.date && ISO_DATE.test(options.date)) {
+      date = options.date
+    } else {
+      const inferred = options.filename ? inferDateFromFilename(options.filename) : null
+      if (!inferred) {
+        throw new DateRequiredError(
+          'This GPX file has no timestamps and no date could be inferred from its filename'
+        )
+      }
+      date = inferred
+    }
+
     const name = parsed.name || date
     const now = new Date().toISOString()
 
@@ -125,8 +183,11 @@ export class Repository {
   }
 
   getTrackPoints(trackId: number): TrackPoint[] {
+    // `id ASC` is the tiebreaker: for a timed track it's a no-op (timestamps already differ), but
+    // for a timeless track every timestamp is NULL, so `id` (insertion order == the file's own
+    // point order, since import inserts points in parsed order) is what actually orders the path.
     const rows = this.db
-      .prepare('SELECT * FROM track_points WHERE track_id = ? ORDER BY timestamp ASC')
+      .prepare('SELECT * FROM track_points WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
       .all(trackId) as TrackPointRow[]
     return rows.map(toTrackPoint)
   }

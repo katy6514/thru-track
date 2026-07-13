@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
 import { migrate } from './db'
-import { Repository } from './repository'
+import { Repository, DateRequiredError, inferDateFromFilename } from './repository'
 
 describe('Repository trip CRUD', () => {
   let repo: Repository
@@ -127,6 +127,88 @@ describe('Repository track import', () => {
 
   it('throws when importing a track into a trip that does not exist', () => {
     expect(() => repo.importGpxTrack(999, sampleGpx())).toThrow()
+  })
+})
+
+function timelessGpx(name = 'Retraced Route'): string {
+  return `<?xml version="1.0"?><gpx><trk><name>${name}</name><trkseg>
+    <trkpt lat="46.85" lon="-121.75"></trkpt>
+    <trkpt lat="46.86" lon="-121.76"></trkpt>
+  </trkseg></trk></gpx>`
+}
+
+describe('inferDateFromFilename', () => {
+  it('extracts a YYYY-MM-DD pattern', () => {
+    expect(inferDateFromFilename('2026-07-01-track.gpx')).toBe('2026-07-01')
+  })
+
+  it('extracts a YYYY_MM_DD pattern', () => {
+    expect(inferDateFromFilename('2026_07_01_track.gpx')).toBe('2026-07-01')
+  })
+
+  it('extracts a compact YYYYMMDD pattern', () => {
+    expect(inferDateFromFilename('20260701.gpx')).toBe('2026-07-01')
+  })
+
+  it('returns null when no pattern matches', () => {
+    expect(inferDateFromFilename('Untitled.gpx')).toBeNull()
+  })
+
+  it('returns null for an implausible date (rejects false-positive digit runs)', () => {
+    expect(inferDateFromFilename('track-99999999.gpx')).toBeNull()
+  })
+})
+
+describe('Repository timeless track import', () => {
+  let repo: Repository
+  let tripId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    tripId = repo.createTrip('PCT 2026').id
+  })
+
+  it('imports a timeless track using a date inferred from the filename', () => {
+    const track = repo.importGpxTrack(tripId, timelessGpx(), { filename: '2026-07-01-caltopo.gpx' })
+    expect(track.date).toBe('2026-07-01')
+    expect(track.name).toBe('Retraced Route')
+  })
+
+  it('imports a timeless track using an explicit date override', () => {
+    const track = repo.importGpxTrack(tripId, timelessGpx(), { date: '2026-07-04' })
+    expect(track.date).toBe('2026-07-04')
+  })
+
+  it('an explicit date override wins over filename inference', () => {
+    const track = repo.importGpxTrack(tripId, timelessGpx(), {
+      filename: '2026-07-01-caltopo.gpx',
+      date: '2026-07-09'
+    })
+    expect(track.date).toBe('2026-07-09')
+  })
+
+  it('throws DateRequiredError when no date can be determined at all', () => {
+    expect(() => repo.importGpxTrack(tripId, timelessGpx())).toThrow(DateRequiredError)
+    expect(() => repo.importGpxTrack(tripId, timelessGpx(), { filename: 'Untitled.gpx' })).toThrow(
+      DateRequiredError
+    )
+    expect(repo.listTracksForTrip(tripId)).toEqual([])
+  })
+
+  it('stores timeless track points with a null timestamp, preserving file order', () => {
+    const track = repo.importGpxTrack(tripId, timelessGpx(), { date: '2026-07-01' })
+    const points = repo.getTrackPoints(track.id)
+    expect(points).toEqual([
+      { lat: 46.85, lng: -121.75, elevation: null, timestamp: null },
+      { lat: 46.86, lng: -121.76, elevation: null, timestamp: null }
+    ])
+  })
+
+  it("a live-timestamped track's own GPS time wins even if a date override is also passed", () => {
+    const track = repo.importGpxTrack(tripId, sampleGpx(), { date: '1999-01-01' })
+    expect(track.date).toBe('2026-07-01')
   })
 })
 

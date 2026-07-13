@@ -31,7 +31,7 @@ export function migrate(database: Database.Database): void {
       lat REAL NOT NULL,
       lng REAL NOT NULL,
       elevation REAL,
-      timestamp TEXT NOT NULL
+      timestamp TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_track_points_track_id ON track_points(track_id);
@@ -43,6 +43,44 @@ export function migrate(database: Database.Database): void {
       updated_at TEXT NOT NULL
     );
   `)
+
+  migrateTrackPointsTimestampNullable(database)
+}
+
+// track_points.timestamp used to be NOT NULL, before timeless (CalTopo-retrace-style) tracks
+// were supported. CREATE TABLE IF NOT EXISTS above is a no-op against an existing database with
+// the old constraint, so an existing local .db file needs its table rebuilt to actually drop the
+// NOT NULL — done via SQLite's standard rename/recreate/copy/drop dance so no data is lost. This
+// is a no-op (single fast PRAGMA read) once a database has already been migrated.
+function migrateTrackPointsTimestampNullable(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(track_points)').all() as {
+    name: string
+    notnull: number
+  }[]
+  const timestampColumn = columns.find((c) => c.name === 'timestamp')
+  if (!timestampColumn || timestampColumn.notnull === 0) return
+
+  database.transaction(() => {
+    database.exec(`
+      ALTER TABLE track_points RENAME TO track_points_old;
+
+      CREATE TABLE track_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id INTEGER NOT NULL REFERENCES tracks(id),
+        lat REAL NOT NULL,
+        lng REAL NOT NULL,
+        elevation REAL,
+        timestamp TEXT
+      );
+
+      INSERT INTO track_points (id, track_id, lat, lng, elevation, timestamp)
+        SELECT id, track_id, lat, lng, elevation, timestamp FROM track_points_old;
+
+      DROP TABLE track_points_old;
+
+      CREATE INDEX IF NOT EXISTS idx_track_points_track_id ON track_points(track_id);
+    `)
+  })()
 }
 
 export function getDb(): Database.Database {

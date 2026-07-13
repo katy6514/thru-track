@@ -32,12 +32,17 @@ export const GAP_THRESHOLD_MS = 15 * 60 * 1000
 export function splitTrackIntoSegments(points: TrackPoint[]): TrackPoint[][] {
   if (points.length === 0) return []
 
+  // A timeless track (e.g. a route retraced in CalTopo rather than recorded live) has no
+  // per-point timestamps to compute a gap from — there's no way to tell a real pause from
+  // ordinary path geometry, so it always renders as one unbroken polyline.
+  if (points[0].timestamp === null) return [points]
+
   const segments: TrackPoint[][] = [[points[0]]]
 
   for (let i = 1; i < points.length; i++) {
     const previous = points[i - 1]
     const current = points[i]
-    const deltaMs = Date.parse(current.timestamp) - Date.parse(previous.timestamp)
+    const deltaMs = Date.parse(current.timestamp as string) - Date.parse(previous.timestamp as string)
 
     if (deltaMs > GAP_THRESHOLD_MS) {
       segments.push([current])

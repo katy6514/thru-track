@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { Trip, Track, TrackPoint, Entry } from '../shared/types'
+import type { Trip, Track, TrackPoint, Entry, GpxImportNeedsDate } from '../shared/types'
 
 // Custom APIs for renderer
 const api = {
@@ -14,8 +14,10 @@ const api = {
   },
   tracks: {
     list: (tripId: number): Promise<Track[]> => ipcRenderer.invoke('tracks:list', tripId),
-    importGpx: (tripId: number): Promise<Track | null> =>
+    importGpx: (tripId: number): Promise<Track | GpxImportNeedsDate | null> =>
       ipcRenderer.invoke('tracks:importGpx', tripId),
+    importGpxWithDate: (tripId: number, gpxRaw: string, date: string): Promise<Track> =>
+      ipcRenderer.invoke('tracks:importGpxWithDate', tripId, gpxRaw, date),
     getPoints: (trackId: number): Promise<TrackPoint[]> =>
       ipcRenderer.invoke('tracks:getPoints', trackId)
   },
