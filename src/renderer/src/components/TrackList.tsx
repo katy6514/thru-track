@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Trip, Track } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
+import TrackDetail from './TrackDetail'
 
 interface TrackListProps {
   trip: Trip
@@ -11,6 +12,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   const [tracks, setTracks] = useState<Track[]>([])
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(false)
+  const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
 
   const refresh = async (): Promise<void> => {
     setTracks(await window.api.tracks.list(trip.id))
@@ -31,6 +33,10 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     } finally {
       setImporting(false)
     }
+  }
+
+  if (selectedTrack) {
+    return <TrackDetail track={selectedTrack} onBack={() => setSelectedTrack(null)} />
   }
 
   return (
@@ -55,7 +61,13 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
         <ul className="tracks">
           {tracks.map((track) => (
             <li key={track.id} className="track-row">
-              <span className="track-name">{track.name}</span>
+              <button
+                type="button"
+                className="track-name"
+                onClick={() => setSelectedTrack(track)}
+              >
+                {track.name}
+              </button>
               <span className="track-date">{track.date}</span>
             </li>
           ))}
