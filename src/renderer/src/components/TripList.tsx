@@ -1,14 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Trip } from '../../../shared/types'
+import { cleanErrorMessage } from '../cleanErrorMessage'
 
-// Electron wraps thrown IPC errors as "Error invoking remote method 'x': Error: <message>" —
-// strip that boilerplate so the UI shows the actual validation message.
-function cleanErrorMessage(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err)
-  return message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
+interface TripListProps {
+  onSelectTrip: (trip: Trip) => void
 }
 
-function TripList(): React.JSX.Element {
+function TripList({ onSelectTrip }: TripListProps): React.JSX.Element {
   const [trips, setTrips] = useState<Trip[]>([])
   const [newTripName, setNewTripName] = useState('')
   const [renamingId, setRenamingId] = useState<number | null>(null)
@@ -100,7 +98,9 @@ function TripList(): React.JSX.Element {
                 </form>
               ) : (
                 <>
-                  <span className="trip-name">{trip.name}</span>
+                  <button type="button" className="trip-name" onClick={() => onSelectTrip(trip)}>
+                    {trip.name}
+                  </button>
                   <span className="trip-date">{new Date(trip.createdAt).toLocaleDateString()}</span>
                   <div className="trip-actions">
                     <button type="button" onClick={() => startRename(trip)}>

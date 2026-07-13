@@ -1,6 +1,8 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { readFile } from 'fs/promises'
 import { getDb, pingDb } from './db'
 import { Repository } from './repository'
+import type { Track } from '../shared/types'
 
 export function registerIpcHandlers(): void {
   const repository = new Repository(getDb())
@@ -13,4 +15,20 @@ export function registerIpcHandlers(): void {
     repository.renameTrip(id, name)
   )
   ipcMain.handle('trips:delete', (_event, id: number) => repository.deleteTrip(id))
+
+  ipcMain.handle('tracks:list', (_event, tripId: number) => repository.listTracksForTrip(tripId))
+
+  ipcMain.handle('tracks:importGpx', async (event, tripId: number): Promise<Track | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) throw new Error('No window found for the requesting renderer')
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Import GPX track',
+      properties: ['openFile'],
+      filters: [{ name: 'GPX files', extensions: ['gpx'] }]
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+
+    const gpxRaw = await readFile(result.filePaths[0], 'utf-8')
+    return repository.importGpxTrack(tripId, gpxRaw)
+  })
 }

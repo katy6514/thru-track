@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { Trip } from '../shared/types'
+import type { Trip, Track } from '../shared/types'
 
 // Custom APIs for renderer
 const api = {
@@ -11,6 +11,11 @@ const api = {
     rename: (id: number, name: string): Promise<Trip> =>
       ipcRenderer.invoke('trips:rename', id, name),
     delete: (id: number): Promise<void> => ipcRenderer.invoke('trips:delete', id)
+  },
+  tracks: {
+    list: (tripId: number): Promise<Track[]> => ipcRenderer.invoke('tracks:list', tripId),
+    importGpx: (tripId: number): Promise<Track | null> =>
+      ipcRenderer.invoke('tracks:importGpx', tripId)
   }
 }
 
