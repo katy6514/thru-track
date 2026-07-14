@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { copyFile, mkdir } from 'fs/promises'
+import { copyFile, mkdir, unlink } from 'fs/promises'
 import { extname, join } from 'path'
 import { app } from 'electron'
 
@@ -24,4 +24,21 @@ export async function storePhotoFile(sourcePath: string, trackId: number): Promi
   const destPath = join(dir, managedFilename)
   await copyFile(sourcePath, destPath)
   return destPath
+}
+
+// Deletes a managed photo file from disk, as post-transaction cleanup after Repository's
+// deleteTrack/deleteTrip has already removed the corresponding `photos` row (and committed).
+// A missing file (ENOENT — already deleted, or the file never made it to disk for some other
+// reason) is deliberately swallowed rather than thrown: by the time this runs, the DB rows are
+// already gone regardless of whether the unlink succeeds, so throwing here would surface a
+// "deletion failed" error to the hiker for a delete that, from their perspective (the track/trip
+// is gone from the app), actually succeeded. Any other error (e.g. a permissions problem) is
+// still rethrown, since that's a real problem worth surfacing.
+export async function deletePhotoFile(filepath: string): Promise<void> {
+  try {
+    await unlink(filepath)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw err
+  }
 }

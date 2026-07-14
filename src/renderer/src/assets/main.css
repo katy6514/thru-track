@@ -238,6 +238,11 @@ button:hover {
   text-decoration: underline;
 }
 
+.track-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .track-date {
   color: var(--ev-c-text-2);
   font-size: 13px;

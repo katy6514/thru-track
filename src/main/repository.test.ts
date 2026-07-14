@@ -512,3 +512,144 @@ describe('Repository messages', () => {
     expect(() => repo.importInreachMessages(999, sampleInreachCsv())).toThrow()
   })
 })
+
+describe('Repository cascade deletion', () => {
+  let db: Database.Database
+  let repo: Repository
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+  })
+
+  // Builds a fully-populated track (points come from the GPX import itself) plus one of every
+  // child row type this track owns: an entry, a journal note, two photos, and a message.
+  function buildFullTrack(tripId: number, label: string): { trackId: number; photoPaths: string[] } {
+    const track = repo.importGpxTrack(tripId, sampleGpx({ name: `${label} track` }))
+    repo.saveEntry(track.id, `${label} entry text`)
+    repo.createNote(track.id, `${label} note`, '2026-07-01T14:00:30Z')
+    const photoA = repo.createPhoto(track.id, `/managed/${label}-a.jpg`, null, null, null)
+    const photoB = repo.createPhoto(track.id, `/managed/${label}-b.jpg`, null, 46.85, -121.75)
+    repo.importInreachMessages(track.id, sampleInreachCsv())
+    return { trackId: track.id, photoPaths: [photoA.filepath, photoB.filepath] }
+  }
+
+  function trackChildRowCounts(trackId: number): Record<string, number> {
+    const count = (table: string): number =>
+      (
+        db.prepare(`SELECT COUNT(*) as c FROM ${table} WHERE track_id = ?`).get(trackId) as {
+          c: number
+        }
+      ).c
+    return {
+      track_points: count('track_points'),
+      entries: count('entries'),
+      journal_notes: count('journal_notes'),
+      photos: count('photos'),
+      messages: count('messages')
+    }
+  }
+
+  function trackRowExists(trackId: number): boolean {
+    return db.prepare('SELECT 1 FROM tracks WHERE id = ?').get(trackId) !== undefined
+  }
+
+  describe('deleteTrack', () => {
+    it('removes the track row and every child row, and returns its photo filepaths', () => {
+      const tripId = repo.createTrip('PCT 2026').id
+      const { trackId, photoPaths } = buildFullTrack(tripId, 'day-one')
+
+      const result = repo.deleteTrack(trackId)
+
+      expect(result.deletedPhotoFilepaths.sort()).toEqual([...photoPaths].sort())
+      expect(trackRowExists(trackId)).toBe(false)
+      expect(trackChildRowCounts(trackId)).toEqual({
+        track_points: 0,
+        entries: 0,
+        journal_notes: 0,
+        photos: 0,
+        messages: 0
+      })
+    })
+
+    it('leaves a sibling track (same trip) completely unaffected', () => {
+      const tripId = repo.createTrip('PCT 2026').id
+      const { trackId: deletedId } = buildFullTrack(tripId, 'day-one')
+      const { trackId: siblingId } = buildFullTrack(tripId, 'day-two')
+
+      repo.deleteTrack(deletedId)
+
+      expect(trackRowExists(siblingId)).toBe(true)
+      expect(trackChildRowCounts(siblingId)).toEqual({
+        track_points: 2,
+        entries: 1,
+        journal_notes: 1,
+        photos: 2,
+        messages: 2
+      })
+    })
+
+    it('leaves a track in a different trip completely unaffected', () => {
+      const tripId = repo.createTrip('PCT 2026').id
+      const otherTripId = repo.createTrip('Other Trip').id
+      const { trackId: deletedId } = buildFullTrack(tripId, 'day-one')
+      const { trackId: otherId } = buildFullTrack(otherTripId, 'other-trip-day')
+
+      repo.deleteTrack(deletedId)
+
+      expect(trackRowExists(otherId)).toBe(true)
+      expect(trackChildRowCounts(otherId).photos).toBe(2)
+    })
+
+    it('throws when deleting a track that does not exist', () => {
+      expect(() => repo.deleteTrack(999)).toThrow()
+    })
+  })
+
+  describe('deleteTrip', () => {
+    it('cascades through every track under the trip and removes the trip itself', () => {
+      const tripId = repo.createTrip('PCT 2026').id
+      const { trackId: track1Id, photoPaths: photos1 } = buildFullTrack(tripId, 'day-one')
+      const { trackId: track2Id, photoPaths: photos2 } = buildFullTrack(tripId, 'day-two')
+
+      const result = repo.deleteTrip(tripId)
+
+      expect(result.deletedPhotoFilepaths.sort()).toEqual([...photos1, ...photos2].sort())
+      expect(trackRowExists(track1Id)).toBe(false)
+      expect(trackRowExists(track2Id)).toBe(false)
+      expect(trackChildRowCounts(track1Id)).toEqual({
+        track_points: 0,
+        entries: 0,
+        journal_notes: 0,
+        photos: 0,
+        messages: 0
+      })
+      expect(trackChildRowCounts(track2Id)).toEqual({
+        track_points: 0,
+        entries: 0,
+        journal_notes: 0,
+        photos: 0,
+        messages: 0
+      })
+      expect(repo.listTrips().map((t) => t.id)).not.toContain(tripId)
+    })
+
+    it('leaves a different trip and its tracks completely unaffected', () => {
+      const tripId = repo.createTrip('PCT 2026').id
+      const otherTripId = repo.createTrip('Other Trip').id
+      buildFullTrack(tripId, 'day-one')
+      const { trackId: otherTrackId } = buildFullTrack(otherTripId, 'other-trip-day')
+
+      repo.deleteTrip(tripId)
+
+      expect(trackRowExists(otherTrackId)).toBe(true)
+      expect(repo.listTrips().map((t) => t.id)).toContain(otherTripId)
+      expect(trackChildRowCounts(otherTrackId).photos).toBe(2)
+    })
+
+    it('throws when deleting a trip that does not exist', () => {
+      expect(() => repo.deleteTrip(999)).toThrow()
+    })
+  })
+})

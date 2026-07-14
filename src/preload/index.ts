@@ -30,7 +30,8 @@ const api = {
     importGpxWithDate: (tripId: number, gpxRaw: string, date: string): Promise<Track> =>
       ipcRenderer.invoke('tracks:importGpxWithDate', tripId, gpxRaw, date),
     getPoints: (trackId: number): Promise<TrackPoint[]> =>
-      ipcRenderer.invoke('tracks:getPoints', trackId)
+      ipcRenderer.invoke('tracks:getPoints', trackId),
+    delete: (trackId: number): Promise<void> => ipcRenderer.invoke('tracks:delete', trackId)
   },
   entries: {
     get: (trackId: number): Promise<Entry | null> => ipcRenderer.invoke('entries:get', trackId),

@@ -4,7 +4,7 @@ import { basename, extname } from 'path'
 import { getDb, pingDb } from './db'
 import { Repository, DateRequiredError } from './repository'
 import { extractExifData } from './exifExtractor'
-import { storePhotoFile } from './fileStorageManager'
+import { storePhotoFile, deletePhotoFile } from './fileStorageManager'
 import { interpolatePosition } from '../shared/positionInterpolator'
 import { detectTimezoneOffset } from '../shared/timezoneOffsetDetector'
 import type {
@@ -36,9 +36,24 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('trips:rename', (_event, id: number, name: string) =>
     repository.renameTrip(id, name)
   )
-  ipcMain.handle('trips:delete', (_event, id: number) => repository.deleteTrip(id))
+  ipcMain.handle('trips:delete', async (_event, id: number): Promise<void> => {
+    // deleteTrip only removes DB rows (in its own transaction) and hands back the filepaths of
+    // every photo that was under the trip; the actual file unlinks happen here, after the
+    // transaction has already committed successfully — see Repository.deleteTrip's doc comment.
+    const { deletedPhotoFilepaths } = repository.deleteTrip(id)
+    for (const filepath of deletedPhotoFilepaths) {
+      await deletePhotoFile(filepath)
+    }
+  })
 
   ipcMain.handle('tracks:list', (_event, tripId: number) => repository.listTracksForTrip(tripId))
+
+  ipcMain.handle('tracks:delete', async (_event, id: number): Promise<void> => {
+    const { deletedPhotoFilepaths } = repository.deleteTrack(id)
+    for (const filepath of deletedPhotoFilepaths) {
+      await deletePhotoFile(filepath)
+    }
+  })
 
   ipcMain.handle(
     'tracks:importGpx',
