@@ -238,6 +238,27 @@ button:hover {
   margin: 16px 0;
 }
 
+.timeline {
+  margin-top: 16px;
+}
+
+.timeline-slider {
+  width: 100%;
+}
+
+.timeline-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+}
+
+.timeline-gap-notice {
+  color: #ff6b6b;
+}
+
 .journal-textarea {
   width: 100%;
   min-height: 400px;

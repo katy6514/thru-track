@@ -1,9 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import type { Track, TrackPoint } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { splitTrackIntoSegments } from '../splitTrackSegments'
+import { interpolatePosition } from '../positionInterpolator'
+
+// Leaflet's default marker icon references relative image paths that resolve fine when its CSS
+// is served as-is, but break once a bundler (Vite here) rewrites asset URLs — the icon silently
+// 404s and renders as a broken-image placeholder. Re-pointing it at the bundler-resolved URLs is
+// the standard fix; without this every marker on the map would be invisible/broken.
+delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow
+})
 
 interface TrackDetailProps {
   track: Track
@@ -11,7 +26,10 @@ interface TrackDetailProps {
   onWriteJournal: () => void
 }
 
-function renderTrackMap(container: HTMLDivElement, points: TrackPoint[]): L.Map {
+function renderTrackMap(
+  container: HTMLDivElement,
+  points: TrackPoint[]
+): { map: L.Map; marker: L.Marker | null } {
   const map = L.map(container)
 
   // OpenTopoMap renders contour lines and hillshading from SRTM elevation data on top of OSM
@@ -26,7 +44,7 @@ function renderTrackMap(container: HTMLDivElement, points: TrackPoint[]): L.Map 
 
   if (points.length === 0) {
     map.setView([0, 0], 2)
-    return map
+    return { map, marker: null }
   }
 
   // A track with a time gap (e.g. a paused/lost-signal recorder) is split
@@ -44,30 +62,47 @@ function renderTrackMap(container: HTMLDivElement, points: TrackPoint[]): L.Map 
 
   map.fitBounds(L.latLngBounds(allLatLngs), { padding: [24, 24] })
 
-  return map
+  // Only a timed track has a timeline to scrub, so only it gets a position marker — a timeless
+  // track (e.g. a CalTopo retrace) has no per-point time to place a marker at a moment of.
+  const isTimed = points[0].timestamp !== null
+  const marker = isTimed
+    ? L.marker([points[0].lat, points[0].lng]).addTo(map)
+    : null
+
+  return { map, marker }
 }
 
 function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const markerRef = useRef<L.Marker | null>(null)
   const [error, setError] = useState('')
-  const [pointCount, setPointCount] = useState<number | null>(null)
+  const [points, setPoints] = useState<TrackPoint[] | null>(null)
+  const [scrubMs, setScrubMs] = useState<number | null>(null)
+  const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
 
   useEffect(() => {
     let cancelled = false
     setError('')
-    setPointCount(null)
+    setPoints(null)
+    setScrubMs(null)
+    setScrubStatus('ok')
 
     window.api.tracks
       .getPoints(track.id)
-      .then((points) => {
+      .then((fetchedPoints) => {
         if (cancelled || !mapContainerRef.current) return
         if (mapRef.current) {
           mapRef.current.remove()
           mapRef.current = null
         }
-        mapRef.current = renderTrackMap(mapContainerRef.current, points)
-        setPointCount(points.length)
+        const { map, marker } = renderTrackMap(mapContainerRef.current, fetchedPoints)
+        mapRef.current = map
+        markerRef.current = marker
+        setPoints(fetchedPoints)
+        if (fetchedPoints.length > 0 && fetchedPoints[0].timestamp !== null) {
+          setScrubMs(Date.parse(fetchedPoints[0].timestamp as string))
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(cleanErrorMessage(err))
@@ -79,8 +114,33 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         mapRef.current.remove()
         mapRef.current = null
       }
+      markerRef.current = null
     }
   }, [track.id])
+
+  const isTimed = points !== null && points.length > 0 && points[0].timestamp !== null
+  const trackStartMs =
+    isTimed && points ? Date.parse(points[0].timestamp as string) : null
+  const trackEndMs =
+    isTimed && points ? Date.parse(points[points.length - 1].timestamp as string) : null
+
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    if (!points) return
+    const ms = Number(e.target.value)
+    setScrubMs(ms)
+
+    const result = interpolatePosition(points, ms)
+    setScrubStatus(result.status)
+    if (result.status === 'ok' && markerRef.current) {
+      markerRef.current.setLatLng([result.lat, result.lng])
+      markerRef.current.setOpacity(1)
+    } else if (markerRef.current) {
+      // A gap (or, defensively, an out-of-range scrub) has no real position to show — hiding
+      // the marker is more honest than leaving it sitting at the last known point, which would
+      // read as "this is where you were" rather than "we don't actually know."
+      markerRef.current.setOpacity(0)
+    }
+  }
 
   return (
     <div className="track-detail">
@@ -97,9 +157,31 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       </div>
 
       {error && <p className="error">{error}</p>}
-      {pointCount === 0 && <p className="empty">This track has no GPS points to show on the map.</p>}
+      {points?.length === 0 && (
+        <p className="empty">This track has no GPS points to show on the map.</p>
+      )}
 
       <div className="track-map" ref={mapContainerRef} />
+
+      {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (
+        <div className="timeline">
+          <input
+            className="timeline-slider"
+            type="range"
+            min={trackStartMs}
+            max={trackEndMs}
+            step={1000}
+            value={scrubMs}
+            onChange={handleScrub}
+          />
+          <div className="timeline-status">
+            <span>{new Date(scrubMs).toLocaleTimeString()}</span>
+            {scrubStatus === 'gap' && (
+              <span className="timeline-gap-notice">No track data here (recording gap)</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
