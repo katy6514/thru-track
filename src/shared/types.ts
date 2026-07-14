@@ -49,6 +49,25 @@ export interface JournalNote {
   createdAt: string
 }
 
+// A photo imported into a track (issue #9). `filepath` points at the app-managed copy under
+// userData (see the main-process File Storage Manager) — never the hiker's original file
+// location, which may move or be deleted after import. `timestamp` comes from the photo's own
+// EXIF DateTimeOriginal and is assumed to already line up with the track's clock (timezone
+// correction is a separate slice, issue #10). `lat`/`lng` come from the photo's own EXIF GPS
+// when present, otherwise from the Position Interpolator against the track's points — and are
+// both null when neither source can place the photo (no EXIF GPS AND the track is timeless, so
+// there's no time axis to interpolate against either). A null-position photo still appears in a
+// track's photo list, it's just not shown as a map pin.
+export interface Photo {
+  id: number
+  trackId: number
+  filepath: string
+  timestamp: string | null
+  lat: number | null
+  lng: number | null
+  createdAt: string
+}
+
 // A satellite check-in message imported from a device export (issue #11). Unlike a JournalNote,
 // timestamp/lat/lng are never null: a satellite messenger transmits its own GPS position with
 // every message, so a message is never dependent on the track's own timestamps/interpolation the

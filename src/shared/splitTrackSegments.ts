@@ -1,4 +1,4 @@
-import type { TrackPoint } from '../../shared/types'
+import type { TrackPoint } from './types'
 
 /**
  * Maximum gap (in milliseconds) between two consecutive track points before
@@ -42,7 +42,8 @@ export function splitTrackIntoSegments(points: TrackPoint[]): TrackPoint[][] {
   for (let i = 1; i < points.length; i++) {
     const previous = points[i - 1]
     const current = points[i]
-    const deltaMs = Date.parse(current.timestamp as string) - Date.parse(previous.timestamp as string)
+    const deltaMs =
+      Date.parse(current.timestamp as string) - Date.parse(previous.timestamp as string)
 
     if (deltaMs > GAP_THRESHOLD_MS) {
       segments.push([current])

@@ -4,10 +4,10 @@ import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
-import type { Track, TrackPoint, JournalNote, Message } from '../../../shared/types'
+import type { Track, TrackPoint, JournalNote, Photo, Message } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
-import { splitTrackIntoSegments } from '../splitTrackSegments'
-import { interpolatePosition } from '../positionInterpolator'
+import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
+import { interpolatePosition } from '../../../shared/positionInterpolator'
 import SidePanel from './SidePanel'
 
 // Leaflet's default marker icon references relative image paths that resolve fine when its CSS
@@ -19,6 +19,17 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
   shadowUrl: markerShadow
+})
+
+// A photo pin needs to read as visually distinct from the plain default marker (track start /
+// scrub position) at a glance. Built as a CSS-styled divIcon rather than another image asset —
+// that sidesteps the exact bundler-rewritten-asset-path problem the comment above works around,
+// with one less image import to get wrong.
+const photoIcon = L.divIcon({
+  className: 'photo-map-marker',
+  html: '<div class="photo-map-marker-dot"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8]
 })
 
 interface TrackDetailProps {
@@ -91,14 +102,28 @@ function formatNoteTitle(note: JournalNote): string {
   return note.timestamp ? new Date(note.timestamp).toLocaleString() : 'Note'
 }
 
+function formatPhotoTitle(photo: Photo): string {
+  return photo.timestamp ? new Date(photo.timestamp).toLocaleString() : 'Photo'
+}
+
 function formatMessageTitle(message: Message): string {
   return new Date(message.timestamp).toLocaleString()
 }
+
+// Which side-panel item (if any) is currently open. A note, a photo, and a message can never be
+// open at the same time — this is a single discriminated slot rather than several independent
+// "selected id" states, so selecting one always closes whichever other kind was open.
+type SelectedItem =
+  | { kind: 'note'; id: number }
+  | { kind: 'photo'; id: number }
+  | { kind: 'message'; id: number }
+  | null
 
 function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
+  const photoMarkersRef = useRef<L.Marker[]>([])
   const messageLayerRef = useRef<L.LayerGroup | null>(null)
   const [error, setError] = useState('')
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
@@ -106,20 +131,27 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
 
   const [notes, setNotes] = useState<JournalNote[]>([])
-  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null)
   const [noteContent, setNoteContent] = useState('')
   const [noteTimestampInput, setNoteTimestampInput] = useState('')
   const [savingNote, setSavingNote] = useState(false)
   const [noteError, setNoteError] = useState('')
-
-  const [messages, setMessages] = useState<Message[]>([])
-  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null)
-  const [importingMessages, setImportingMessages] = useState(false)
-  const [messageError, setMessageError] = useState('')
   // Once the hiker edits the timestamp field directly, stop overwriting it as the timeline is
   // scrubbed — "defaults to the current scrub position" should only apply until they've made
   // their own choice.
   const noteTimestampTouchedRef = useRef(false)
+
+  const [photos, setPhotos] = useState<Photo[]>([])
+  const [importingPhotos, setImportingPhotos] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+
+  const [messages, setMessages] = useState<Message[]>([])
+  const [importingMessages, setImportingMessages] = useState(false)
+  const [messageError, setMessageError] = useState('')
+
+  const [selectedItem, setSelectedItem] = useState<SelectedItem>(null)
+  const [photoDataUri, setPhotoDataUri] = useState<string | null>(null)
+  const [photoDataLoading, setPhotoDataLoading] = useState(false)
+  const [photoDataError, setPhotoDataError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -128,32 +160,36 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setScrubMs(null)
     setScrubStatus('ok')
     setNotes([])
-    setSelectedNoteId(null)
+    setPhotos([])
+    setMessages([])
+    setSelectedItem(null)
     setNoteContent('')
     setNoteTimestampInput('')
     setNoteError('')
-    setMessages([])
-    setSelectedMessageId(null)
+    setPhotoError('')
     setMessageError('')
     noteTimestampTouchedRef.current = false
 
     Promise.all([
       window.api.tracks.getPoints(track.id),
       window.api.notes.list(track.id),
+      window.api.photos.list(track.id),
       window.api.messages.list(track.id)
     ])
-      .then(([fetchedPoints, fetchedNotes, fetchedMessages]) => {
+      .then(([fetchedPoints, fetchedNotes, fetchedPhotos, fetchedMessages]) => {
         if (cancelled || !mapContainerRef.current) return
         if (mapRef.current) {
           mapRef.current.remove()
           mapRef.current = null
         }
+        photoMarkersRef.current = []
         const { map, marker, messageLayer } = renderTrackMap(mapContainerRef.current, fetchedPoints)
         mapRef.current = map
         markerRef.current = marker
         messageLayerRef.current = messageLayer
         setPoints(fetchedPoints)
         setNotes(fetchedNotes)
+        setPhotos(fetchedPhotos)
         setMessages(fetchedMessages)
         if (fetchedPoints.length > 0 && fetchedPoints[0].timestamp !== null) {
           setScrubMs(Date.parse(fetchedPoints[0].timestamp as string))
@@ -170,6 +206,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         mapRef.current = null
       }
       markerRef.current = null
+      photoMarkersRef.current = []
       messageLayerRef.current = null
     }
   }, [track.id])
@@ -192,10 +229,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         fillOpacity: 0.9
       })
         .bindTooltip(message.content || '(no message text)')
-        .on('click', () => {
-          setSelectedNoteId(null)
-          setSelectedMessageId(message.id)
-        })
+        .on('click', () => setSelectedItem({ kind: 'message', id: message.id }))
         .addTo(layer)
     }
   }, [messages])
@@ -204,6 +238,24 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const trackStartMs = isTimed && points ? Date.parse(points[0].timestamp as string) : null
   const trackEndMs =
     isTimed && points ? Date.parse(points[points.length - 1].timestamp as string) : null
+
+  // Keeps the map's photo pins in sync with the `photos` state, independent of the initial
+  // track-load effect above — this also fires right after a fresh batch is imported, without
+  // needing to re-fetch points/notes or rebuild the whole map.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    for (const existing of photoMarkersRef.current) existing.remove()
+    photoMarkersRef.current = []
+
+    for (const photo of photos) {
+      if (photo.lat === null || photo.lng === null) continue
+      const marker = L.marker([photo.lat, photo.lng], { icon: photoIcon }).addTo(map)
+      marker.on('click', () => setSelectedItem({ kind: 'photo', id: photo.id }))
+      photoMarkersRef.current.push(marker)
+    }
+  }, [photos])
 
   // Keep the "add note" timestamp field defaulted to wherever the timeline is currently
   // scrubbed to, until the hiker starts editing it themselves.
@@ -254,6 +306,22 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     }
   }
 
+  const handleImportPhotos = async (): Promise<void> => {
+    setImportingPhotos(true)
+    setPhotoError('')
+    try {
+      const imported = await window.api.photos.import(track.id)
+      if (imported.length > 0) {
+        const updated = await window.api.photos.list(track.id)
+        setPhotos(updated)
+      }
+    } catch (err) {
+      setPhotoError(cleanErrorMessage(err))
+    } finally {
+      setImportingPhotos(false)
+    }
+  }
+
   const handleImportMessages = async (): Promise<void> => {
     setImportingMessages(true)
     setMessageError('')
@@ -269,8 +337,50 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     }
   }
 
-  const selectedNote = notes.find((n) => n.id === selectedNoteId) ?? null
-  const selectedMessage = messages.find((m) => m.id === selectedMessageId) ?? null
+  const selectedNote =
+    selectedItem?.kind === 'note' ? (notes.find((n) => n.id === selectedItem.id) ?? null) : null
+  const selectedPhoto =
+    selectedItem?.kind === 'photo' ? (photos.find((p) => p.id === selectedItem.id) ?? null) : null
+  const selectedMessage =
+    selectedItem?.kind === 'message'
+      ? (messages.find((m) => m.id === selectedItem.id) ?? null)
+      : null
+
+  // Fetches the actual image bytes (as a base64 data URI) only once a photo is selected — the
+  // renderer can't read arbitrary local files itself, so the side panel shows a loading state
+  // while main process reads the file and hands it back over IPC.
+  useEffect(() => {
+    if (!selectedPhoto) {
+      setPhotoDataUri(null)
+      setPhotoDataError('')
+      return
+    }
+    let cancelled = false
+    setPhotoDataUri(null)
+    setPhotoDataError('')
+    setPhotoDataLoading(true)
+    window.api.photos
+      .getDataUri(selectedPhoto.id)
+      .then((uri) => {
+        if (!cancelled) setPhotoDataUri(uri)
+      })
+      .catch((err) => {
+        if (!cancelled) setPhotoDataError(cleanErrorMessage(err))
+      })
+      .finally(() => {
+        if (!cancelled) setPhotoDataLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedPhoto])
+
+  // A photo only earns a timeline marker when the track itself is timed (there's a time axis to
+  // place it on) AND the photo has its own EXIF timestamp. Everything else — every photo on a
+  // timeless track, plus the rare timed-track photo with no EXIF timestamp at all — falls back
+  // to the plain list below, the same way timeless-track notes do.
+  const timelinePhotos = isTimed ? photos.filter((p) => p.timestamp !== null) : []
+  const fallbackListPhotos = isTimed ? photos.filter((p) => p.timestamp === null) : photos
 
   return (
     <div className="track-detail-layout">
@@ -285,12 +395,16 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
           <button type="button" onClick={onWriteJournal}>
             Write journal entry
           </button>
+          <button type="button" onClick={handleImportPhotos} disabled={importingPhotos}>
+            {importingPhotos ? 'Importing photos…' : 'Import photos'}
+          </button>
           <button type="button" onClick={handleImportMessages} disabled={importingMessages}>
             {importingMessages ? 'Importing…' : 'Import messages (CSV)'}
           </button>
         </div>
 
         {error && <p className="error">{error}</p>}
+        {photoError && <p className="error">{photoError}</p>}
         {messageError && <p className="error">{messageError}</p>}
         {points?.length === 0 && (
           <p className="empty">This track has no GPS points to show on the map.</p>
@@ -312,7 +426,9 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
               />
               <div className="timeline-markers">
                 {notes
-                  .filter((note): note is JournalNote & { timestamp: string } => note.timestamp !== null)
+                  .filter(
+                    (note): note is JournalNote & { timestamp: string } => note.timestamp !== null
+                  )
                   .map((note) => {
                     const noteMs = Date.parse(note.timestamp)
                     const pct = ((noteMs - trackStartMs) / (trackEndMs - trackStartMs)) * 100
@@ -325,13 +441,26 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                         style={{ left: `${clampedPct}%` }}
                         aria-label={`Note at ${new Date(noteMs).toLocaleTimeString()}: ${note.content}`}
                         title={note.content}
-                        onClick={() => {
-                          setSelectedMessageId(null)
-                          setSelectedNoteId(note.id)
-                        }}
+                        onClick={() => setSelectedItem({ kind: 'note', id: note.id })}
                       />
                     )
                   })}
+                {timelinePhotos.map((photo) => {
+                  const photoMs = Date.parse(photo.timestamp as string)
+                  const pct = ((photoMs - trackStartMs) / (trackEndMs - trackStartMs)) * 100
+                  const clampedPct = Math.min(100, Math.max(0, pct))
+                  return (
+                    <button
+                      key={`photo-${photo.id}`}
+                      type="button"
+                      className="timeline-marker timeline-marker-photo"
+                      style={{ left: `${clampedPct}%` }}
+                      aria-label={`Photo at ${new Date(photoMs).toLocaleTimeString()}`}
+                      title="Photo"
+                      onClick={() => setSelectedItem({ kind: 'photo', id: photo.id })}
+                    />
+                  )
+                })}
                 {/* Distinguished from a note dot by shape/color (diamond, teal) since both can
                     appear on the same timeline. A message always has a timestamp (see Message's
                     doc comment), so unlike notes there's no null-timestamp case to filter out. */}
@@ -347,10 +476,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                       style={{ left: `${clampedPct}%` }}
                       aria-label={`Message at ${new Date(messageMs).toLocaleTimeString()}: ${message.content}`}
                       title={message.content}
-                      onClick={() => {
-                        setSelectedNoteId(null)
-                        setSelectedMessageId(message.id)
-                      }}
+                      onClick={() => setSelectedItem({ kind: 'message', id: message.id })}
                     />
                   )
                 })}
@@ -403,16 +529,35 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                 <button
                   type="button"
                   className="note-list-item"
-                  onClick={() => {
-                    setSelectedMessageId(null)
-                    setSelectedNoteId(note.id)
-                  }}
+                  onClick={() => setSelectedItem({ kind: 'note', id: note.id })}
                 >
                   {note.content}
                 </button>
               </li>
             ))}
           </ul>
+        )}
+
+        {/* Same fallback shape as the note list above: a timeless track has no timeline for any
+            photo to sit on, and even a timed track can have a photo with no EXIF timestamp to
+            place on it — both land here instead of being silently dropped. */}
+        {fallbackListPhotos.length > 0 && (
+          <>
+            <h3 className="photo-list-heading">Photos</h3>
+            <ul className="photo-list">
+              {fallbackListPhotos.map((photo) => (
+                <li key={photo.id}>
+                  <button
+                    type="button"
+                    className="photo-list-item"
+                    onClick={() => setSelectedItem({ kind: 'photo', id: photo.id })}
+                  >
+                    {formatPhotoTitle(photo)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
 
         {/* Same timeless-track fallback as notes above: no time axis to place a dot on, so
@@ -424,10 +569,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                 <button
                   type="button"
                   className="message-list-item"
-                  onClick={() => {
-                    setSelectedNoteId(null)
-                    setSelectedMessageId(message.id)
-                  }}
+                  onClick={() => setSelectedItem({ kind: 'message', id: message.id })}
                 >
                   {message.content || '(no message text)'}
                 </button>
@@ -438,16 +580,23 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       </div>
 
       {selectedNote && (
-        <SidePanel title={formatNoteTitle(selectedNote)} onClose={() => setSelectedNoteId(null)}>
+        <SidePanel title={formatNoteTitle(selectedNote)} onClose={() => setSelectedItem(null)}>
           <p>{selectedNote.content}</p>
         </SidePanel>
       )}
 
+      {selectedPhoto && (
+        <SidePanel title={formatPhotoTitle(selectedPhoto)} onClose={() => setSelectedItem(null)}>
+          {photoDataLoading && <p className="empty">Loading photo…</p>}
+          {photoDataError && <p className="error">{photoDataError}</p>}
+          {!photoDataLoading && photoDataUri && (
+            <img className="side-panel-photo" src={photoDataUri} alt="" />
+          )}
+        </SidePanel>
+      )}
+
       {selectedMessage && (
-        <SidePanel
-          title={formatMessageTitle(selectedMessage)}
-          onClose={() => setSelectedMessageId(null)}
-        >
+        <SidePanel title={formatMessageTitle(selectedMessage)} onClose={() => setSelectedItem(null)}>
           <p>{selectedMessage.content || '(no message text)'}</p>
           <p className="message-location">
             {selectedMessage.lat.toFixed(5)}, {selectedMessage.lng.toFixed(5)}

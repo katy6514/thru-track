@@ -343,6 +343,85 @@ describe('Repository journal notes', () => {
   })
 })
 
+describe('Repository photos', () => {
+  let repo: Repository
+  let trackId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    const tripId = repo.createTrip('PCT 2026').id
+    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+  })
+
+  it('returns an empty list for a track with no photos yet', () => {
+    expect(repo.listPhotosForTrack(trackId)).toEqual([])
+  })
+
+  it('creates a photo with a timestamp and position', () => {
+    const photo = repo.createPhoto(
+      trackId,
+      '/managed/track-1-abc.jpg',
+      '2026-07-01T14:00:30Z',
+      46.85,
+      -121.75
+    )
+    expect(photo.trackId).toBe(trackId)
+    expect(photo.filepath).toBe('/managed/track-1-abc.jpg')
+    expect(photo.timestamp).toBe('2026-07-01T14:00:30Z')
+    expect(photo.lat).toBe(46.85)
+    expect(photo.lng).toBe(-121.75)
+    expect(photo.id).toBeTypeOf('number')
+
+    expect(repo.listPhotosForTrack(trackId)).toEqual([photo])
+  })
+
+  it('creates a photo with a null timestamp and null position (no EXIF GPS on a timeless track)', () => {
+    const photo = repo.createPhoto(trackId, '/managed/track-1-def.jpg', null, null, null)
+    expect(photo.timestamp).toBeNull()
+    expect(photo.lat).toBeNull()
+    expect(photo.lng).toBeNull()
+  })
+
+  it('lists photos for a track ordered by timestamp ascending', () => {
+    repo.createPhoto(trackId, '/managed/second.jpg', '2026-07-01T15:00:00Z', 1, 1)
+    repo.createPhoto(trackId, '/managed/first.jpg', '2026-07-01T14:00:00Z', 1, 1)
+    const photos = repo.listPhotosForTrack(trackId)
+    expect(photos.map((p) => p.filepath)).toEqual(['/managed/first.jpg', '/managed/second.jpg'])
+  })
+
+  it('does not list photos belonging to a different track', () => {
+    const otherTrackId = repo.importGpxTrack(
+      repo.createTrip('Other Trip').id,
+      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
+    ).id
+
+    repo.createPhoto(trackId, '/managed/track-one.jpg', null, null, null)
+    repo.createPhoto(otherTrackId, '/managed/track-two.jpg', null, null, null)
+
+    expect(repo.listPhotosForTrack(trackId).map((p) => p.filepath)).toEqual([
+      '/managed/track-one.jpg'
+    ])
+    expect(repo.listPhotosForTrack(otherTrackId).map((p) => p.filepath)).toEqual([
+      '/managed/track-two.jpg'
+    ])
+  })
+
+  it('gets a single photo by id', () => {
+    const created = repo.createPhoto(trackId, '/managed/one.jpg', null, null, null)
+    expect(repo.getPhoto(created.id)).toEqual(created)
+  })
+
+  it('returns null when getting a photo that does not exist', () => {
+    expect(repo.getPhoto(999)).toBeNull()
+  })
+
+  it('throws when creating a photo for a track that does not exist', () => {
+    expect(() => repo.createPhoto(999, '/managed/orphan.jpg', null, null, null)).toThrow()
+  })
+})
+
 function sampleInreachCsv({
   rows = [
     { time: '2026-07-01T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'At the trailhead' },

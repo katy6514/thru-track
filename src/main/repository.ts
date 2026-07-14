@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import type { Trip, Track, TrackPoint, Entry, JournalNote, Message } from '../shared/types'
+import type { Trip, Track, TrackPoint, Entry, JournalNote, Photo, Message } from '../shared/types'
 import { parseGpx } from './gpxParser'
 import { parseInreachCsv } from './inreachCsvParser'
 
@@ -80,6 +80,16 @@ interface JournalNoteRow {
   created_at: string
 }
 
+interface PhotoRow {
+  id: number
+  track_id: number
+  filepath: string
+  timestamp: string | null
+  lat: number | null
+  lng: number | null
+  created_at: string
+}
+
 interface MessageRow {
   id: number
   track_id: number
@@ -96,7 +106,13 @@ function toTrip(row: TripRow): Trip {
 }
 
 function toTrack(row: TrackRow): Track {
-  return { id: row.id, tripId: row.trip_id, name: row.name, date: row.date, createdAt: row.created_at }
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    name: row.name,
+    date: row.date,
+    createdAt: row.created_at
+  }
 }
 
 function toTrackPoint(row: TrackPointRow): TrackPoint {
@@ -113,6 +129,18 @@ function toJournalNote(row: JournalNoteRow): JournalNote {
     trackId: row.track_id,
     content: row.content,
     timestamp: row.timestamp,
+    createdAt: row.created_at
+  }
+}
+
+function toPhoto(row: PhotoRow): Photo {
+  return {
+    id: row.id,
+    trackId: row.track_id,
+    filepath: row.filepath,
+    timestamp: row.timestamp,
+    lat: row.lat,
+    lng: row.lng,
     createdAt: row.created_at
   }
 }
@@ -245,8 +273,7 @@ export class Repository {
 
   getEntry(trackId: number): Entry | null {
     const row = this.db.prepare('SELECT * FROM entries WHERE track_id = ?').get(trackId) as
-      | EntryRow
-      | undefined
+      EntryRow | undefined
     return row ? toEntry(row) : null
   }
 
@@ -262,7 +289,9 @@ export class Repository {
          ON CONFLICT(track_id) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at`
       )
       .run(trackId, text, now)
-    return toEntry(this.db.prepare('SELECT * FROM entries WHERE track_id = ?').get(trackId) as EntryRow)
+    return toEntry(
+      this.db.prepare('SELECT * FROM entries WHERE track_id = ?').get(trackId) as EntryRow
+    )
   }
 
   // `timestamp` is the ISO instant the note refers to on the track's timeline, or null for a
@@ -279,7 +308,9 @@ export class Repository {
       )
       .run(trackId, trimmed, timestamp, now)
     return toJournalNote(
-      this.db.prepare('SELECT * FROM journal_notes WHERE id = ?').get(info.lastInsertRowid) as JournalNoteRow
+      this.db
+        .prepare('SELECT * FROM journal_notes WHERE id = ?')
+        .get(info.lastInsertRowid) as JournalNoteRow
     )
   }
 
@@ -291,6 +322,45 @@ export class Repository {
       .prepare('SELECT * FROM journal_notes WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
       .all(trackId) as JournalNoteRow[]
     return rows.map(toJournalNote)
+  }
+
+  // `filepath` is the already-copied managed path (see main/fileStorageManager.ts) — this method
+  // only persists metadata, it doesn't touch the filesystem itself. `timestamp`/`lat`/`lng` are
+  // each independently nullable: see Photo's doc comment in shared/types.ts for what each null
+  // combination means. Like createNote, a track can have any number of photos, so this is a
+  // plain insert, not an upsert, and inserting against a nonexistent trackId throws via the
+  // `foreign_keys = ON` pragma set in migrate().
+  createPhoto(
+    trackId: number,
+    filepath: string,
+    timestamp: string | null,
+    lat: number | null,
+    lng: number | null
+  ): Photo {
+    const now = new Date().toISOString()
+    const info = this.db
+      .prepare(
+        'INSERT INTO photos (track_id, filepath, timestamp, lat, lng, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(trackId, filepath, timestamp, lat, lng, now)
+    return toPhoto(
+      this.db.prepare('SELECT * FROM photos WHERE id = ?').get(info.lastInsertRowid) as PhotoRow
+    )
+  }
+
+  getPhoto(id: number): Photo | null {
+    const row = this.db.prepare('SELECT * FROM photos WHERE id = ?').get(id) as PhotoRow | undefined
+    return row ? toPhoto(row) : null
+  }
+
+  listPhotosForTrack(trackId: number): Photo[] {
+    // Same `id ASC` tiebreak as listNotesForTrack: a no-op once every photo has a distinct real
+    // timestamp, but falls back to creation order for a timeless track's photos (timestamp
+    // always null there).
+    const rows = this.db
+      .prepare('SELECT * FROM photos WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
+      .all(trackId) as PhotoRow[]
+    return rows.map(toPhoto)
   }
 
   // Parses an inReach CSV export and inserts every message it contains against `trackId` in one

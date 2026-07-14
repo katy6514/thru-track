@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { splitTrackIntoSegments } from './splitTrackSegments'
-import type { TrackPoint } from '../../shared/types'
+import type { TrackPoint } from './types'
 
 function point(timestamp: string | null, lat = 0, lng = 0): TrackPoint {
   return { lat, lng, elevation: null, timestamp }

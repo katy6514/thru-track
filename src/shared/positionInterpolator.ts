@@ -1,10 +1,8 @@
-import type { TrackPoint } from '../../shared/types'
+import type { TrackPoint } from './types'
 import { GAP_THRESHOLD_MS } from './splitTrackSegments'
 
 export type InterpolationResult =
-  | { status: 'ok'; lat: number; lng: number }
-  | { status: 'gap' }
-  | { status: 'out-of-range' }
+  { status: 'ok'; lat: number; lng: number } | { status: 'gap' } | { status: 'out-of-range' }
 
 /**
  * Resolves a lat/lng for a given moment in a track's day, by linearly interpolating
@@ -21,7 +19,10 @@ export type InterpolationResult =
  * same threshold used to decide where the map polyline breaks, so "the timeline
  * says you're in a gap" and "the map shows a broken line here" always agree.
  */
-export function interpolatePosition(points: TrackPoint[], timestampMs: number): InterpolationResult {
+export function interpolatePosition(
+  points: TrackPoint[],
+  timestampMs: number
+): InterpolationResult {
   if (points.length === 0) return { status: 'out-of-range' }
 
   const times = points.map((p) => Date.parse(p.timestamp as string))
