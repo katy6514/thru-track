@@ -8,6 +8,8 @@ import type {
   GpxImportNeedsDate,
   JournalNote,
   Photo,
+  PendingPhoto,
+  PhotoImportNeedsOffset,
   Message
 } from '../shared/types'
 
@@ -42,7 +44,14 @@ const api = {
   },
   photos: {
     list: (trackId: number): Promise<Photo[]> => ipcRenderer.invoke('photos:list', trackId),
-    import: (trackId: number): Promise<Photo[]> => ipcRenderer.invoke('photos:import', trackId),
+    import: (trackId: number): Promise<Photo[] | PhotoImportNeedsOffset> =>
+      ipcRenderer.invoke('photos:import', trackId),
+    importWithOffset: (
+      trackId: number,
+      pending: PendingPhoto[],
+      offsetMinutes: number
+    ): Promise<Photo[]> =>
+      ipcRenderer.invoke('photos:importWithOffset', trackId, pending, offsetMinutes),
     getDataUri: (photoId: number): Promise<string> =>
       ipcRenderer.invoke('photos:getDataUri', photoId)
   },

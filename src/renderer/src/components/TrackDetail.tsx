@@ -4,7 +4,14 @@ import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
-import type { Track, TrackPoint, JournalNote, Photo, Message } from '../../../shared/types'
+import type {
+  Track,
+  TrackPoint,
+  JournalNote,
+  Photo,
+  PendingPhoto,
+  Message
+} from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
 import { interpolatePosition } from '../../../shared/positionInterpolator'
@@ -110,6 +117,19 @@ function formatMessageTitle(message: Message): string {
   return new Date(message.timestamp).toLocaleString()
 }
 
+// Renders a signed minutes offset in a readable "+2h 30m" (or "-1h", "+45m", "no offset") form
+// for the confirmation prompt, rather than a bare (and easy to misread) minutes count.
+function formatOffset(minutes: number): string {
+  if (minutes === 0) return 'no offset'
+  const sign = minutes > 0 ? '+' : '-'
+  const abs = Math.abs(minutes)
+  const hours = Math.floor(abs / 60)
+  const mins = abs % 60
+  if (hours === 0) return `${sign}${mins}m`
+  if (mins === 0) return `${sign}${hours}h`
+  return `${sign}${hours}h ${mins}m`
+}
+
 // Which side-panel item (if any) is currently open. A note, a photo, and a message can never be
 // open at the same time — this is a single discriminated slot rather than several independent
 // "selected id" states, so selecting one always closes whichever other kind was open.
@@ -143,6 +163,15 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const [photos, setPhotos] = useState<Photo[]>([])
   const [importingPhotos, setImportingPhotos] = useState(false)
   const [photoError, setPhotoError] = useState('')
+  // Set when photos:import comes back with needsOffsetConfirm — a timed track and at least one
+  // EXIF timestamp in the batch means there's an actual offset to confirm/adjust before this
+  // batch is stored. Nothing has been copied to managed storage or written to the DB yet at this
+  // point, so canceling out of this prompt simply discards `pending` — no cleanup needed.
+  const [pendingOffsetImport, setPendingOffsetImport] = useState<{
+    pending: PendingPhoto[]
+    proposedOffsetMinutes: number
+  } | null>(null)
+  const [offsetInput, setOffsetInput] = useState('0')
 
   const [messages, setMessages] = useState<Message[]>([])
   const [importingMessages, setImportingMessages] = useState(false)
@@ -168,6 +197,8 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setNoteError('')
     setPhotoError('')
     setMessageError('')
+    setPendingOffsetImport(null)
+    setOffsetInput('0')
     noteTimestampTouchedRef.current = false
 
     Promise.all([
@@ -310,8 +341,16 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setImportingPhotos(true)
     setPhotoError('')
     try {
-      const imported = await window.api.photos.import(track.id)
-      if (imported.length > 0) {
+      const result = await window.api.photos.import(track.id)
+      if ('needsOffsetConfirm' in result) {
+        // Nothing has been stored yet — hold the pending batch until the hiker confirms (or
+        // adjusts) the proposed offset via handleConfirmOffset below.
+        setPendingOffsetImport({
+          pending: result.pending,
+          proposedOffsetMinutes: result.proposedOffsetMinutes
+        })
+        setOffsetInput(String(result.proposedOffsetMinutes))
+      } else if (result.length > 0) {
         const updated = await window.api.photos.list(track.id)
         setPhotos(updated)
       }
@@ -320,6 +359,36 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     } finally {
       setImportingPhotos(false)
     }
+  }
+
+  const handleConfirmOffset = async (e: FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (!pendingOffsetImport) return
+    const offsetMinutes = Number(offsetInput)
+    if (!Number.isFinite(offsetMinutes)) return
+
+    setImportingPhotos(true)
+    setPhotoError('')
+    try {
+      await window.api.photos.importWithOffset(
+        track.id,
+        pendingOffsetImport.pending,
+        offsetMinutes
+      )
+      setPendingOffsetImport(null)
+      const updated = await window.api.photos.list(track.id)
+      setPhotos(updated)
+    } catch (err) {
+      setPhotoError(cleanErrorMessage(err))
+    } finally {
+      setImportingPhotos(false)
+    }
+  }
+
+  const handleCancelOffset = (): void => {
+    // Nothing was ever copied/written for this batch — discarding the pending list is the whole
+    // cancellation, no IPC call needed.
+    setPendingOffsetImport(null)
   }
 
   const handleImportMessages = async (): Promise<void> => {
@@ -395,13 +464,46 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
           <button type="button" onClick={onWriteJournal}>
             Write journal entry
           </button>
-          <button type="button" onClick={handleImportPhotos} disabled={importingPhotos}>
+          <button
+            type="button"
+            onClick={handleImportPhotos}
+            disabled={importingPhotos || !!pendingOffsetImport}
+          >
             {importingPhotos ? 'Importing photos…' : 'Import photos'}
           </button>
           <button type="button" onClick={handleImportMessages} disabled={importingMessages}>
             {importingMessages ? 'Importing…' : 'Import messages (CSV)'}
           </button>
         </div>
+
+        {pendingOffsetImport && (
+          <form className="offset-prompt" onSubmit={handleConfirmOffset}>
+            <label htmlFor="offset-prompt-input">
+              These photos&apos; timestamps look {formatOffset(pendingOffsetImport.proposedOffsetMinutes)}{' '}
+              from the track&apos;s clock — apply this correction before placing them?
+            </label>
+            <div className="offset-prompt-controls">
+              <input
+                id="offset-prompt-input"
+                type="number"
+                step={1}
+                className="offset-prompt-input"
+                value={offsetInput}
+                onChange={(e) => setOffsetInput(e.target.value)}
+                aria-label="Offset in minutes"
+                required
+                autoFocus
+              />
+              <span className="offset-prompt-unit">minutes ({formatOffset(Number(offsetInput) || 0)})</span>
+              <button type="submit" disabled={importingPhotos}>
+                {importingPhotos ? 'Importing…' : 'Confirm'}
+              </button>
+              <button type="button" onClick={handleCancelOffset} disabled={importingPhotos}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
 
         {error && <p className="error">{error}</p>}
         {photoError && <p className="error">{photoError}</p>}
