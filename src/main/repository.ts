@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
-import type { Trip, Track, TrackPoint, Entry, JournalNote, Photo } from '../shared/types'
+import type { Trip, Track, TrackPoint, Entry, JournalNote, Photo, Message } from '../shared/types'
 import { parseGpx } from './gpxParser'
+import { parseInreachCsv } from './inreachCsvParser'
 
 interface TripRow {
   id: number
@@ -89,6 +90,17 @@ interface PhotoRow {
   created_at: string
 }
 
+interface MessageRow {
+  id: number
+  track_id: number
+  content: string
+  timestamp: string
+  lat: number
+  lng: number
+  source: string
+  created_at: string
+}
+
 function toTrip(row: TripRow): Trip {
   return { id: row.id, name: row.name, createdAt: row.created_at, updatedAt: row.updated_at }
 }
@@ -129,6 +141,21 @@ function toPhoto(row: PhotoRow): Photo {
     timestamp: row.timestamp,
     lat: row.lat,
     lng: row.lng,
+    createdAt: row.created_at
+  }
+}
+
+function toMessage(row: MessageRow): Message {
+  return {
+    id: row.id,
+    trackId: row.track_id,
+    content: row.content,
+    timestamp: row.timestamp,
+    lat: row.lat,
+    lng: row.lng,
+    // Only 'inreach' is ever written today (see importInreachMessages) — cast rather than widen
+    // Message.source to `string`, so a future second source is a deliberate, typed addition.
+    source: row.source as Message['source'],
     createdAt: row.created_at
   }
 }
@@ -334,5 +361,55 @@ export class Repository {
       .prepare('SELECT * FROM photos WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
       .all(trackId) as PhotoRow[]
     return rows.map(toPhoto)
+  }
+
+  // Parses an inReach CSV export and inserts every message it contains against `trackId` in one
+  // transaction — either the whole file lands, or (on a parse error) none of it does, same as
+  // importGpxTrack. Returns the newly created messages; callers that want the track's full message
+  // list afterward should call listMessagesForTrack.
+  importInreachMessages(trackId: number, csvRaw: string): Message[] {
+    const parsed = parseInreachCsv(csvRaw)
+    if (parsed.length === 0) return []
+
+    const now = new Date().toISOString()
+
+    const insertMessage = this.db.prepare(
+      `INSERT INTO messages (track_id, content, timestamp, lat, lng, source, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+
+    const { firstId, lastId } = this.db.transaction(() => {
+      let firstId: number | bigint | null = null
+      let lastId: number | bigint | null = null
+      for (const message of parsed) {
+        const info = insertMessage.run(
+          trackId,
+          message.content,
+          message.timestamp,
+          message.lat,
+          message.lng,
+          'inreach',
+          now
+        )
+        if (firstId === null) firstId = info.lastInsertRowid
+        lastId = info.lastInsertRowid
+      }
+      return { firstId: firstId as number, lastId: lastId as number }
+    })()
+
+    const rows = this.db
+      .prepare('SELECT * FROM messages WHERE id BETWEEN ? AND ? ORDER BY id ASC')
+      .all(firstId, lastId) as MessageRow[]
+    return rows.map(toMessage)
+  }
+
+  listMessagesForTrack(trackId: number): Message[] {
+    // Same `id ASC` tiebreak as getTrackPoints/listNotesForTrack for stable ordering, though in
+    // practice a message's timestamp is never null so this rarely matters in the same way it
+    // does for a timeless track's notes.
+    const rows = this.db
+      .prepare('SELECT * FROM messages WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
+      .all(trackId) as MessageRow[]
+    return rows.map(toMessage)
   }
 }

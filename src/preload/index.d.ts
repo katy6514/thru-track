@@ -6,7 +6,8 @@ import type {
   Entry,
   GpxImportNeedsDate,
   JournalNote,
-  Photo
+  Photo,
+  Message
 } from '../shared/types'
 
 interface Api {
@@ -35,6 +36,10 @@ interface Api {
     list: (trackId: number) => Promise<Photo[]>
     import: (trackId: number) => Promise<Photo[]>
     getDataUri: (photoId: number) => Promise<string>
+  }
+  messages: {
+    importCsv: (trackId: number) => Promise<Message[] | null>
+    list: (trackId: number) => Promise<Message[]>
   }
 }
 

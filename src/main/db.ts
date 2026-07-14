@@ -76,6 +76,27 @@ export function migrate(database: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_photos_track_id ON photos(track_id);
+
+    -- A satellite message imported from a device export (currently only Garmin inReach CSV
+    -- exports, hence source = 'inreach' hardcoded at write time — the PRD's data model
+    -- anticipates other sources, e.g. 'spot', later). Unlike a journal note, a message always
+    -- carries its own GPS position straight from the export (a satellite messenger transmits
+    -- location with every check-in), so lat/lng are NOT NULL here, and timestamp is NOT NULL
+    -- too since a message's own absolute timestamp is independent of whether the track it's
+    -- attached to happens to have GPS timestamps of its own (see the timeless-track handling in
+    -- gpxParser.ts / TrackPoint.timestamp).
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      track_id INTEGER NOT NULL REFERENCES tracks(id),
+      content TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      source TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_track_id ON messages(track_id);
   `)
 
   migrateTrackPointsTimestampNullable(database)

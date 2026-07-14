@@ -421,3 +421,94 @@ describe('Repository photos', () => {
     expect(() => repo.createPhoto(999, '/managed/orphan.jpg', null, null, null)).toThrow()
   })
 })
+
+function sampleInreachCsv({
+  rows = [
+    { time: '2026-07-01T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'At the trailhead' },
+    { time: '2026-07-01T16:30:00Z', lat: '46.90', lng: '-121.80', text: 'Reached the ridge' }
+  ]
+}: { rows?: { time: string; lat: string; lng: string; text: string }[] } = {}): string {
+  const header = 'Time UTC,Latitude,Longitude,Text'
+  const dataRows = rows.map((r) => `${r.time},${r.lat},${r.lng},${r.text}`)
+  return [header, ...dataRows].join('\n')
+}
+
+describe('Repository messages', () => {
+  let repo: Repository
+  let trackId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    const tripId = repo.createTrip('PCT 2026').id
+    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+  })
+
+  it('returns an empty list for a track with no messages yet', () => {
+    expect(repo.listMessagesForTrack(trackId)).toEqual([])
+  })
+
+  it('imports messages from an inReach CSV export', () => {
+    const messages = repo.importInreachMessages(trackId, sampleInreachCsv())
+
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({
+      trackId,
+      content: 'At the trailhead',
+      timestamp: '2026-07-01T14:00:00.000Z',
+      lat: 46.85,
+      lng: -121.75,
+      source: 'inreach'
+    })
+    expect(messages[0].id).toBeTypeOf('number')
+
+    expect(repo.listMessagesForTrack(trackId)).toEqual(messages)
+  })
+
+  it('lists messages for a track ordered by timestamp ascending', () => {
+    repo.importInreachMessages(
+      trackId,
+      sampleInreachCsv({
+        rows: [
+          { time: '2026-07-01T16:00:00Z', lat: '46.9', lng: '-121.8', text: 'Second' },
+          { time: '2026-07-01T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'First' }
+        ]
+      })
+    )
+    const messages = repo.listMessagesForTrack(trackId)
+    expect(messages.map((m) => m.content)).toEqual(['First', 'Second'])
+  })
+
+  it('does not list messages belonging to a different track', () => {
+    const otherTrackId = repo.importGpxTrack(
+      repo.createTrip('Other Trip').id,
+      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
+    ).id
+
+    repo.importInreachMessages(
+      trackId,
+      sampleInreachCsv({
+        rows: [{ time: '2026-07-01T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'For track one' }]
+      })
+    )
+    repo.importInreachMessages(
+      otherTrackId,
+      sampleInreachCsv({
+        rows: [{ time: '2026-07-02T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'For track two' }]
+      })
+    )
+
+    expect(repo.listMessagesForTrack(trackId).map((m) => m.content)).toEqual(['For track one'])
+    expect(repo.listMessagesForTrack(otherTrackId).map((m) => m.content)).toEqual(['For track two'])
+  })
+
+  it('propagates a clear error for a malformed CSV without creating any messages', () => {
+    expect(() => repo.importInreachMessages(trackId, 'not a csv at all')).toThrow()
+    expect(repo.listMessagesForTrack(trackId)).toEqual([])
+  })
+
+  it('throws when importing messages for a track that does not exist', () => {
+    expect(() => repo.importInreachMessages(999, sampleInreachCsv())).toThrow()
+  })
+})

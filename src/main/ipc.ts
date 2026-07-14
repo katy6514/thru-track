@@ -6,7 +6,14 @@ import { Repository, DateRequiredError } from './repository'
 import { extractExifData } from './exifExtractor'
 import { storePhotoFile } from './fileStorageManager'
 import { interpolatePosition } from '../shared/positionInterpolator'
-import type { Track, TrackPoint, GpxImportNeedsDate, JournalNote, Photo } from '../shared/types'
+import type {
+  Track,
+  TrackPoint,
+  GpxImportNeedsDate,
+  JournalNote,
+  Photo,
+  Message
+} from '../shared/types'
 
 const IMAGE_MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -135,4 +142,25 @@ export function registerIpcHandlers(): void {
     const mime = IMAGE_MIME_TYPES[extname(photo.filepath).toLowerCase()] ?? 'image/jpeg'
     return `data:${mime};base64,${buffer.toString('base64')}`
   })
+
+  ipcMain.handle(
+    'messages:importCsv',
+    async (event, trackId: number): Promise<Message[] | null> => {
+      const window = BrowserWindow.fromWebContents(event.sender)
+      if (!window) throw new Error('No window found for the requesting renderer')
+      const result = await dialog.showOpenDialog(window, {
+        title: 'Import inReach messages (CSV)',
+        properties: ['openFile'],
+        filters: [{ name: 'CSV files', extensions: ['csv'] }]
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+
+      const csvRaw = await readFile(result.filePaths[0], 'utf-8')
+      return repository.importInreachMessages(trackId, csvRaw)
+    }
+  )
+
+  ipcMain.handle('messages:list', (_event, trackId: number): Message[] =>
+    repository.listMessagesForTrack(trackId)
+  )
 }

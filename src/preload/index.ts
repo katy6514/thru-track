@@ -7,7 +7,8 @@ import type {
   Entry,
   GpxImportNeedsDate,
   JournalNote,
-  Photo
+  Photo,
+  Message
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -44,6 +45,11 @@ const api = {
     import: (trackId: number): Promise<Photo[]> => ipcRenderer.invoke('photos:import', trackId),
     getDataUri: (photoId: number): Promise<string> =>
       ipcRenderer.invoke('photos:getDataUri', photoId)
+  },
+  messages: {
+    importCsv: (trackId: number): Promise<Message[] | null> =>
+      ipcRenderer.invoke('messages:importCsv', trackId),
+    list: (trackId: number): Promise<Message[]> => ipcRenderer.invoke('messages:list', trackId)
   }
 }
 

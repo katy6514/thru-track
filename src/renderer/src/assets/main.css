@@ -308,6 +308,22 @@ button:hover {
   background-color: #86efac;
 }
 
+/* A message dot is shaped differently from a note dot (diamond vs. circle) and colored teal to
+   match its map marker, so the two item types stay visually distinguishable when both appear on
+   the same timeline. */
+.timeline-marker-message {
+  top: 3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  transform: translateX(-50%) rotate(45deg);
+  background-color: #2dd4bf;
+}
+
+.timeline-marker-message:hover {
+  background-color: #5eead4;
+}
+
 .timeline-status {
   display: flex;
   justify-content: space-between;
@@ -401,6 +417,35 @@ button:hover {
   border: 2px solid var(--color-background);
   background-color: #4ade80;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.message-list-item {
+  width: 100%;
+  text-align: left;
+  background-color: var(--color-background-soft);
+  border: none;
+  border-left: 3px solid #2dd4bf;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--color-text);
+  font-weight: normal;
+}
+
+.message-list-item:hover {
+  background-color: var(--color-background-mute);
+}
+
+.message-location {
+  margin-top: 8px;
+  color: var(--ev-c-text-2);
+  font-size: 13px;
 }
 
 .side-panel {
