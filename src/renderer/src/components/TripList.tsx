@@ -51,7 +51,13 @@ function TripList({ onSelectTrip }: TripListProps): React.JSX.Element {
   }
 
   const handleDelete = async (trip: Trip): Promise<void> => {
-    if (!window.confirm(`Delete "${trip.name}"? This cannot be undone.`)) return
+    if (
+      !window.confirm(
+        `Delete "${trip.name}"? This deletes every day in this trip and everything in them ` +
+          `(photos, notes, messages, journal entries). This cannot be undone.`
+      )
+    )
+      return
     setError('')
     try {
       await window.api.trips.delete(trip.id)

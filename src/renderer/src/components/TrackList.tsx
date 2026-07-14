@@ -62,6 +62,23 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }
 
+  const handleDelete = async (track: Track): Promise<void> => {
+    if (
+      !window.confirm(
+        `Delete "${track.name}" and everything in it (photos, notes, messages, journal entry)? ` +
+          `This cannot be undone.`
+      )
+    )
+      return
+    setError('')
+    try {
+      await window.api.tracks.delete(track.id)
+      await refresh()
+    } catch (err) {
+      setError(cleanErrorMessage(err))
+    }
+  }
+
   if (selectedTrack && showJournal) {
     return <JournalEditor track={selectedTrack} onBack={() => setShowJournal(false)} />
   }
@@ -130,6 +147,11 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
                 {track.name}
               </button>
               <span className="track-date">{track.date}</span>
+              <div className="track-actions">
+                <button type="button" onClick={() => handleDelete(track)}>
+                  Delete
+                </button>
+              </div>
             </li>
           ))}
         </ul>

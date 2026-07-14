@@ -203,9 +203,64 @@ export class Repository {
     return toTrip(this.db.prepare('SELECT * FROM trips WHERE id = ?').get(id) as TripRow)
   }
 
-  deleteTrip(id: number): void {
-    const info = this.db.prepare('DELETE FROM trips WHERE id = ?').run(id)
-    if (info.changes === 0) throw new Error(`Trip ${id} not found`)
+  // Cascade-deletes a single track and everything hanging off it: track_points, entries,
+  // journal_notes, messages, and photos rows (children before the parent row, since foreign_keys
+  // is ON and there's no ON DELETE CASCADE configured anywhere — see db.ts), then the track row
+  // itself. All in one transaction: either the whole track and its children disappear, or (on
+  // error) none of it does.
+  //
+  // Deleting a photo's *file* on disk is a side effect outside the DB transaction, and this class
+  // is kept a pure-DB-transaction concern (see fileStorageManager.ts for the actual filesystem
+  // delete) — so this only collects and returns the filepaths of the photos it deleted in the DB.
+  // The caller (the IPC layer) is responsible for unlinking those files after this transaction
+  // commits successfully.
+  deleteTrack(id: number): { deletedPhotoFilepaths: string[] } {
+    return this.db.transaction(() => this.deleteTrackInTransaction(id))()
+  }
+
+  // The actual delete logic, factored out so deleteTrip can reuse it for each of a trip's tracks
+  // inside its own single transaction, rather than duplicating the SQL or nesting
+  // this.db.transaction calls (better-sqlite3 transactions aren't meant to nest).
+  private deleteTrackInTransaction(id: number): { deletedPhotoFilepaths: string[] } {
+    const photoRows = this.db
+      .prepare('SELECT filepath FROM photos WHERE track_id = ?')
+      .all(id) as { filepath: string }[]
+
+    this.db.prepare('DELETE FROM track_points WHERE track_id = ?').run(id)
+    this.db.prepare('DELETE FROM entries WHERE track_id = ?').run(id)
+    this.db.prepare('DELETE FROM journal_notes WHERE track_id = ?').run(id)
+    this.db.prepare('DELETE FROM messages WHERE track_id = ?').run(id)
+    this.db.prepare('DELETE FROM photos WHERE track_id = ?').run(id)
+
+    const info = this.db.prepare('DELETE FROM tracks WHERE id = ?').run(id)
+    if (info.changes === 0) throw new Error(`Track ${id} not found`)
+
+    return { deletedPhotoFilepaths: photoRows.map((r) => r.filepath) }
+  }
+
+  // Cascade-deletes a trip: every track under it (and each track's own children, via
+  // deleteTrackInTransaction), then the trip row itself, all in one transaction. Returns the
+  // combined list of photo filepaths across every deleted track, same shape as deleteTrack, for
+  // the IPC layer to unlink from disk after this commits.
+  deleteTrip(id: number): { deletedPhotoFilepaths: string[] } {
+    return this.db.transaction(() => {
+      const tripExists = this.db.prepare('SELECT 1 FROM trips WHERE id = ?').get(id)
+      if (!tripExists) throw new Error(`Trip ${id} not found`)
+
+      const trackRows = this.db
+        .prepare('SELECT id FROM tracks WHERE trip_id = ?')
+        .all(id) as { id: number }[]
+
+      const deletedPhotoFilepaths: string[] = []
+      for (const track of trackRows) {
+        const result = this.deleteTrackInTransaction(track.id)
+        deletedPhotoFilepaths.push(...result.deletedPhotoFilepaths)
+      }
+
+      this.db.prepare('DELETE FROM trips WHERE id = ?').run(id)
+
+      return { deletedPhotoFilepaths }
+    })()
   }
 
   importGpxTrack(

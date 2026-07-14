@@ -23,6 +23,7 @@ interface Api {
     importGpx: (tripId: number) => Promise<Track | GpxImportNeedsDate | null>
     importGpxWithDate: (tripId: number, gpxRaw: string, date: string) => Promise<Track>
     getPoints: (trackId: number) => Promise<TrackPoint[]>
+    delete: (trackId: number) => Promise<void>
   }
   entries: {
     get: (trackId: number) => Promise<Entry | null>
