@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { interpolatePosition } from './positionInterpolator'
-import type { TrackPoint } from '../../shared/types'
+import type { TrackPoint } from './types'
 
 function point(timestamp: string, lat: number, lng: number): TrackPoint {
   return { lat, lng, elevation: null, timestamp }

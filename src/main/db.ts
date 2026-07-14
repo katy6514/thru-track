@@ -57,6 +57,25 @@ export function migrate(database: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_journal_notes_track_id ON journal_notes(track_id);
+
+    -- filepath is the app-managed copy under userData (see the File Storage Manager in
+    -- main/fileStorageManager.ts), never the hiker's original file location. timestamp comes
+    -- from EXIF DateTimeOriginal and is nullable for a photo with no EXIF timestamp at all.
+    -- lat/lng come from EXIF GPS when present, otherwise from the Position Interpolator against
+    -- the track's points, and are both nullable for the same reason journal_notes.timestamp is
+    -- nullable: no EXIF GPS AND a timeless track (no time axis to interpolate against) leaves no
+    -- position available at all.
+    CREATE TABLE IF NOT EXISTS photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      track_id INTEGER NOT NULL REFERENCES tracks(id),
+      filepath TEXT NOT NULL,
+      timestamp TEXT,
+      lat REAL,
+      lng REAL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_photos_track_id ON photos(track_id);
   `)
 
   migrateTrackPointsTimestampNullable(database)

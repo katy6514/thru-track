@@ -250,6 +250,8 @@ button:hover {
 }
 
 .track-detail-actions {
+  display: flex;
+  gap: 8px;
   margin: 16px 0;
 }
 
@@ -293,6 +295,17 @@ button:hover {
 
 .timeline-marker:hover {
   background-color: #ffc266;
+}
+
+/* Same shape/positioning as .timeline-marker, distinguished by color and a square rather than
+   round outline so a photo reads differently from a note at a glance on the timeline strip. */
+.timeline-marker-photo {
+  border-radius: 3px;
+  background-color: #4ade80;
+}
+
+.timeline-marker-photo:hover {
+  background-color: #86efac;
 }
 
 .timeline-status {
@@ -350,6 +363,46 @@ button:hover {
   background-color: var(--color-background-mute);
 }
 
+.photo-list-heading {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--ev-c-text-2);
+}
+
+.photo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.photo-list-item {
+  width: 100%;
+  text-align: left;
+  background-color: var(--color-background-soft);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--color-text);
+  font-weight: normal;
+}
+
+.photo-list-item:hover {
+  background-color: var(--color-background-mute);
+}
+
+/* Same green used for .timeline-marker-photo, so a photo's map pin and its timeline marker read
+   as the same kind of thing. Built as a plain CSS dot (a Leaflet divIcon) rather than another
+   marker image asset, to avoid the bundler-rewritten-asset-path pitfall noted above. */
+.photo-map-marker-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 2px solid var(--color-background);
+  background-color: #4ade80;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
 .side-panel {
   width: 340px;
   flex-shrink: 0;
@@ -389,6 +442,12 @@ button:hover {
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.side-panel-photo {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
 }
 
 .journal-textarea {
