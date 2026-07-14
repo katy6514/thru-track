@@ -274,3 +274,71 @@ describe('Repository journal entries', () => {
     expect(repo.getEntry(999)).toBeNull()
   })
 })
+
+describe('Repository journal notes', () => {
+  let repo: Repository
+  let trackId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    const tripId = repo.createTrip('PCT 2026').id
+    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+  })
+
+  it('returns an empty list for a track with no notes yet', () => {
+    expect(repo.listNotesForTrack(trackId)).toEqual([])
+  })
+
+  it('creates a note with a timestamp', () => {
+    const note = repo.createNote(trackId, 'Great view here', '2026-07-01T14:00:30Z')
+    expect(note.trackId).toBe(trackId)
+    expect(note.content).toBe('Great view here')
+    expect(note.timestamp).toBe('2026-07-01T14:00:30Z')
+    expect(note.id).toBeTypeOf('number')
+
+    expect(repo.listNotesForTrack(trackId)).toEqual([note])
+  })
+
+  it('creates a note with a null timestamp (the timeless-track case)', () => {
+    const note = repo.createNote(trackId, 'No specific time for this one', null)
+    expect(note.timestamp).toBeNull()
+  })
+
+  it('trims whitespace from note content', () => {
+    const note = repo.createNote(trackId, '  Trimmed  ', null)
+    expect(note.content).toBe('Trimmed')
+  })
+
+  it('rejects empty or whitespace-only note content', () => {
+    expect(() => repo.createNote(trackId, '', null)).toThrow()
+    expect(() => repo.createNote(trackId, '   ', null)).toThrow()
+  })
+
+  it('lists notes for a track ordered by timestamp ascending', () => {
+    repo.createNote(trackId, 'Second', '2026-07-01T15:00:00Z')
+    repo.createNote(trackId, 'First', '2026-07-01T14:00:00Z')
+    const notes = repo.listNotesForTrack(trackId)
+    expect(notes.map((n) => n.content)).toEqual(['First', 'Second'])
+  })
+
+  it('does not list notes belonging to a different track', () => {
+    const otherTrackId = repo.importGpxTrack(
+      repo.createTrip('Other Trip').id,
+      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
+    ).id
+
+    repo.createNote(trackId, 'Note for track one', null)
+    repo.createNote(otherTrackId, 'Note for track two', null)
+
+    expect(repo.listNotesForTrack(trackId).map((n) => n.content)).toEqual(['Note for track one'])
+    expect(repo.listNotesForTrack(otherTrackId).map((n) => n.content)).toEqual([
+      'Note for track two'
+    ])
+  })
+
+  it('throws when creating a note for a track that does not exist', () => {
+    expect(() => repo.createNote(999, 'orphan note', null)).toThrow()
+  })
+})

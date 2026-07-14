@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import type { Trip, Track, TrackPoint, Entry } from '../shared/types'
+import type { Trip, Track, TrackPoint, Entry, JournalNote } from '../shared/types'
 import { parseGpx } from './gpxParser'
 
 interface TripRow {
@@ -71,6 +71,14 @@ interface EntryRow {
   updated_at: string
 }
 
+interface JournalNoteRow {
+  id: number
+  track_id: number
+  content: string
+  timestamp: string | null
+  created_at: string
+}
+
 function toTrip(row: TripRow): Trip {
   return { id: row.id, name: row.name, createdAt: row.created_at, updatedAt: row.updated_at }
 }
@@ -87,9 +95,25 @@ function toEntry(row: EntryRow): Entry {
   return { id: row.id, trackId: row.track_id, text: row.text, updatedAt: row.updated_at }
 }
 
+function toJournalNote(row: JournalNoteRow): JournalNote {
+  return {
+    id: row.id,
+    trackId: row.track_id,
+    content: row.content,
+    timestamp: row.timestamp,
+    createdAt: row.created_at
+  }
+}
+
 function requireName(name: string): string {
   const trimmed = name.trim()
   if (!trimmed) throw new Error('Trip name must not be empty')
+  return trimmed
+}
+
+function requireContent(content: string): string {
+  const trimmed = content.trim()
+  if (!trimmed) throw new Error('Note content must not be empty')
   return trimmed
 }
 
@@ -212,5 +236,33 @@ export class Repository {
       )
       .run(trackId, text, now)
     return toEntry(this.db.prepare('SELECT * FROM entries WHERE track_id = ?').get(trackId) as EntryRow)
+  }
+
+  // `timestamp` is the ISO instant the note refers to on the track's timeline, or null for a
+  // note on a timeless track (no time axis to place it on — see JournalNote's doc comment).
+  // Unlike entries, a track can have any number of notes, so this is a plain insert, not an
+  // upsert. Inserting against a nonexistent trackId throws via the `foreign_keys = ON` pragma
+  // set in migrate(), same as importGpxTrack/saveEntry.
+  createNote(trackId: number, content: string, timestamp: string | null): JournalNote {
+    const trimmed = requireContent(content)
+    const now = new Date().toISOString()
+    const info = this.db
+      .prepare(
+        'INSERT INTO journal_notes (track_id, content, timestamp, created_at) VALUES (?, ?, ?, ?)'
+      )
+      .run(trackId, trimmed, timestamp, now)
+    return toJournalNote(
+      this.db.prepare('SELECT * FROM journal_notes WHERE id = ?').get(info.lastInsertRowid) as JournalNoteRow
+    )
+  }
+
+  listNotesForTrack(trackId: number): JournalNote[] {
+    // Same `id ASC` tiebreak as getTrackPoints: a no-op when every note has a distinct real
+    // timestamp, but for a timeless track's notes (timestamp always null) it falls back to
+    // creation order, which is the only sensible order available.
+    const rows = this.db
+      .prepare('SELECT * FROM journal_notes WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
+      .all(trackId) as JournalNoteRow[]
+    return rows.map(toJournalNote)
   }
 }

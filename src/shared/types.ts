@@ -36,3 +36,15 @@ export interface Entry {
   text: string
   updatedAt: string
 }
+
+// A hiker-authored note pinned to a moment on a track's timeline (issue #7). `timestamp` is the
+// ISO instant the note refers to, and is null for a note on a timeless track (no time axis to
+// place it on — see TrackPoint.timestamp above for the same distinction). Map position (lat/lng)
+// is deliberately not modeled here; that's future work, out of scope for this slice.
+export interface JournalNote {
+  id: number
+  trackId: number
+  content: string
+  timestamp: string | null
+  createdAt: string
+}

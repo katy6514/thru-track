@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
-import type { Track, TrackPoint } from '../../../shared/types'
+import type { Track, TrackPoint, JournalNote } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { splitTrackIntoSegments } from '../splitTrackSegments'
 import { interpolatePosition } from '../positionInterpolator'
+import SidePanel from './SidePanel'
 
 // Leaflet's default marker icon references relative image paths that resolve fine when its CSS
 // is served as-is, but break once a bundler (Vite here) rewrites asset URLs — the icon silently
@@ -65,11 +66,23 @@ function renderTrackMap(
   // Only a timed track has a timeline to scrub, so only it gets a position marker — a timeless
   // track (e.g. a CalTopo retrace) has no per-point time to place a marker at a moment of.
   const isTimed = points[0].timestamp !== null
-  const marker = isTimed
-    ? L.marker([points[0].lat, points[0].lng]).addTo(map)
-    : null
+  const marker = isTimed ? L.marker([points[0].lat, points[0].lng]).addTo(map) : null
 
   return { map, marker }
+}
+
+// Converts an epoch-ms instant into the local-time string a `datetime-local` input expects
+// ("YYYY-MM-DDTHH:mm"). Deliberately uses local time-of-day components (not UTC) since that's
+// what a `datetime-local` input always displays/edits — round-tripping through `new Date(value)`
+// on submit reconstructs the correct instant regardless of timezone.
+function toDatetimeLocalValue(ms: number): string {
+  const d = new Date(ms)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatNoteTitle(note: JournalNote): string {
+  return note.timestamp ? new Date(note.timestamp).toLocaleString() : 'Note'
 }
 
 function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React.JSX.Element {
@@ -81,16 +94,32 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
 
+  const [notes, setNotes] = useState<JournalNote[]>([])
+  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null)
+  const [noteContent, setNoteContent] = useState('')
+  const [noteTimestampInput, setNoteTimestampInput] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+  const [noteError, setNoteError] = useState('')
+  // Once the hiker edits the timestamp field directly, stop overwriting it as the timeline is
+  // scrubbed — "defaults to the current scrub position" should only apply until they've made
+  // their own choice.
+  const noteTimestampTouchedRef = useRef(false)
+
   useEffect(() => {
     let cancelled = false
     setError('')
     setPoints(null)
     setScrubMs(null)
     setScrubStatus('ok')
+    setNotes([])
+    setSelectedNoteId(null)
+    setNoteContent('')
+    setNoteTimestampInput('')
+    setNoteError('')
+    noteTimestampTouchedRef.current = false
 
-    window.api.tracks
-      .getPoints(track.id)
-      .then((fetchedPoints) => {
+    Promise.all([window.api.tracks.getPoints(track.id), window.api.notes.list(track.id)])
+      .then(([fetchedPoints, fetchedNotes]) => {
         if (cancelled || !mapContainerRef.current) return
         if (mapRef.current) {
           mapRef.current.remove()
@@ -100,6 +129,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         mapRef.current = map
         markerRef.current = marker
         setPoints(fetchedPoints)
+        setNotes(fetchedNotes)
         if (fetchedPoints.length > 0 && fetchedPoints[0].timestamp !== null) {
           setScrubMs(Date.parse(fetchedPoints[0].timestamp as string))
         }
@@ -119,10 +149,17 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   }, [track.id])
 
   const isTimed = points !== null && points.length > 0 && points[0].timestamp !== null
-  const trackStartMs =
-    isTimed && points ? Date.parse(points[0].timestamp as string) : null
+  const trackStartMs = isTimed && points ? Date.parse(points[0].timestamp as string) : null
   const trackEndMs =
     isTimed && points ? Date.parse(points[points.length - 1].timestamp as string) : null
+
+  // Keep the "add note" timestamp field defaulted to wherever the timeline is currently
+  // scrubbed to, until the hiker starts editing it themselves.
+  useEffect(() => {
+    if (scrubMs !== null && !noteTimestampTouchedRef.current) {
+      setNoteTimestampInput(toDatetimeLocalValue(scrubMs))
+    }
+  }, [scrubMs])
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>): void => {
     if (!points) return
@@ -142,45 +179,147 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     }
   }
 
+  const handleAddNote = async (e: FormEvent): Promise<void> => {
+    e.preventDefault()
+    const content = noteContent.trim()
+    if (!content) return
+    // A timed track's note is pinned to a moment on the timeline; a timeless track has no time
+    // axis at all, so its notes are simply stored without one (see JournalNote's doc comment).
+    if (isTimed && !noteTimestampInput) return
+
+    setSavingNote(true)
+    setNoteError('')
+    try {
+      const timestamp = isTimed ? new Date(noteTimestampInput).toISOString() : null
+      await window.api.notes.create(track.id, content, timestamp)
+      const updated = await window.api.notes.list(track.id)
+      setNotes(updated)
+      setNoteContent('')
+    } catch (err) {
+      setNoteError(cleanErrorMessage(err))
+    } finally {
+      setSavingNote(false)
+    }
+  }
+
+  const selectedNote = notes.find((n) => n.id === selectedNoteId) ?? null
+
   return (
-    <div className="track-detail">
-      <button type="button" className="back-link" onClick={onBack}>
-        &larr; Back to tracks
-      </button>
-
-      <h1>{track.name}</h1>
-
-      <div className="track-detail-actions">
-        <button type="button" onClick={onWriteJournal}>
-          Write journal entry
+    <div className="track-detail-layout">
+      <div className="track-detail">
+        <button type="button" className="back-link" onClick={onBack}>
+          &larr; Back to tracks
         </button>
+
+        <h1>{track.name}</h1>
+
+        <div className="track-detail-actions">
+          <button type="button" onClick={onWriteJournal}>
+            Write journal entry
+          </button>
+        </div>
+
+        {error && <p className="error">{error}</p>}
+        {points?.length === 0 && (
+          <p className="empty">This track has no GPS points to show on the map.</p>
+        )}
+
+        <div className="track-map" ref={mapContainerRef} />
+
+        {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (
+          <div className="timeline">
+            <div className="timeline-track">
+              <input
+                className="timeline-slider"
+                type="range"
+                min={trackStartMs}
+                max={trackEndMs}
+                step={1000}
+                value={scrubMs}
+                onChange={handleScrub}
+              />
+              <div className="timeline-markers">
+                {notes
+                  .filter((note): note is JournalNote & { timestamp: string } => note.timestamp !== null)
+                  .map((note) => {
+                    const noteMs = Date.parse(note.timestamp)
+                    const pct = ((noteMs - trackStartMs) / (trackEndMs - trackStartMs)) * 100
+                    const clampedPct = Math.min(100, Math.max(0, pct))
+                    return (
+                      <button
+                        key={note.id}
+                        type="button"
+                        className="timeline-marker"
+                        style={{ left: `${clampedPct}%` }}
+                        aria-label={`Note at ${new Date(noteMs).toLocaleTimeString()}: ${note.content}`}
+                        title={note.content}
+                        onClick={() => setSelectedNoteId(note.id)}
+                      />
+                    )
+                  })}
+              </div>
+            </div>
+            <div className="timeline-status">
+              <span>{new Date(scrubMs).toLocaleTimeString()}</span>
+              {scrubStatus === 'gap' && (
+                <span className="timeline-gap-notice">No track data here (recording gap)</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {points !== null && points.length > 0 && (
+          <form className="note-form" onSubmit={handleAddNote}>
+            {isTimed && (
+              <input
+                type="datetime-local"
+                className="note-form-timestamp"
+                value={noteTimestampInput}
+                onChange={(e) => {
+                  noteTimestampTouchedRef.current = true
+                  setNoteTimestampInput(e.target.value)
+                }}
+                required
+              />
+            )}
+            <input
+              type="text"
+              className="note-form-content"
+              placeholder={isTimed ? 'Add a note at this moment…' : 'Add a note about this day…'}
+              value={noteContent}
+              onChange={(e) => setNoteContent(e.target.value)}
+              required
+            />
+            <button type="submit" disabled={savingNote}>
+              {savingNote ? 'Adding…' : 'Add note'}
+            </button>
+          </form>
+        )}
+        {noteError && <p className="error">{noteError}</p>}
+
+        {/* A timeless track has no timeline to place a marker on, so its notes are listed
+            plainly instead — still clickable, still opening the same side panel. */}
+        {!isTimed && notes.length > 0 && (
+          <ul className="note-list">
+            {notes.map((note) => (
+              <li key={note.id}>
+                <button
+                  type="button"
+                  className="note-list-item"
+                  onClick={() => setSelectedNoteId(note.id)}
+                >
+                  {note.content}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
-      {error && <p className="error">{error}</p>}
-      {points?.length === 0 && (
-        <p className="empty">This track has no GPS points to show on the map.</p>
-      )}
-
-      <div className="track-map" ref={mapContainerRef} />
-
-      {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (
-        <div className="timeline">
-          <input
-            className="timeline-slider"
-            type="range"
-            min={trackStartMs}
-            max={trackEndMs}
-            step={1000}
-            value={scrubMs}
-            onChange={handleScrub}
-          />
-          <div className="timeline-status">
-            <span>{new Date(scrubMs).toLocaleTimeString()}</span>
-            {scrubStatus === 'gap' && (
-              <span className="timeline-gap-notice">No track data here (recording gap)</span>
-            )}
-          </div>
-        </div>
+      {selectedNote && (
+        <SidePanel title={formatNoteTitle(selectedNote)} onClose={() => setSelectedNoteId(null)}>
+          <p>{selectedNote.content}</p>
+        </SidePanel>
       )}
     </div>
   )

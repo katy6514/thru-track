@@ -42,6 +42,21 @@ export function migrate(database: Database.Database): void {
       text TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    -- Unlike entries (one per track), a track can have many notes. timestamp is nullable for
+    -- the same reason track_points.timestamp is: a note added to a timeless (CalTopo-retraced)
+    -- track has no time axis to place it on, so it's stored with a null timestamp and simply
+    -- isn't shown on a timeline (there isn't one to show it on). Position (lat/lng) is
+    -- deliberately not modeled here — placing a note on the map is out of scope for issue #7.
+    CREATE TABLE IF NOT EXISTS journal_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      track_id INTEGER NOT NULL REFERENCES tracks(id),
+      content TEXT NOT NULL,
+      timestamp TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_journal_notes_track_id ON journal_notes(track_id);
   `)
 
   migrateTrackPointsTimestampNullable(database)
