@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerShadow from 'leaflet/dist/images/marker-shadow.png'
-import type { Track, TrackPoint, JournalNote } from '../../../shared/types'
+import type { Track, TrackPoint, JournalNote, Message } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { splitTrackIntoSegments } from '../splitTrackSegments'
 import { interpolatePosition } from '../positionInterpolator'
@@ -30,8 +30,14 @@ interface TrackDetailProps {
 function renderTrackMap(
   container: HTMLDivElement,
   points: TrackPoint[]
-): { map: L.Map; marker: L.Marker | null } {
+): { map: L.Map; marker: L.Marker | null; messageLayer: L.LayerGroup } {
   const map = L.map(container)
+
+  // A satellite message always carries its own GPS position (unlike a photo or a journal note),
+  // so its map markers are populated by a separate effect keyed on the `messages` state — this
+  // empty layer group is just the place they get added to, independent of whether the track
+  // itself is timed.
+  const messageLayer = L.layerGroup().addTo(map)
 
   // OpenTopoMap renders contour lines and hillshading from SRTM elevation data on top of OSM
   // data — chosen over a plain street basemap so elevation is visible at a glance, and over
@@ -45,7 +51,7 @@ function renderTrackMap(
 
   if (points.length === 0) {
     map.setView([0, 0], 2)
-    return { map, marker: null }
+    return { map, marker: null, messageLayer }
   }
 
   // A track with a time gap (e.g. a paused/lost-signal recorder) is split
@@ -68,7 +74,7 @@ function renderTrackMap(
   const isTimed = points[0].timestamp !== null
   const marker = isTimed ? L.marker([points[0].lat, points[0].lng]).addTo(map) : null
 
-  return { map, marker }
+  return { map, marker, messageLayer }
 }
 
 // Converts an epoch-ms instant into the local-time string a `datetime-local` input expects
@@ -85,10 +91,15 @@ function formatNoteTitle(note: JournalNote): string {
   return note.timestamp ? new Date(note.timestamp).toLocaleString() : 'Note'
 }
 
+function formatMessageTitle(message: Message): string {
+  return new Date(message.timestamp).toLocaleString()
+}
+
 function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
+  const messageLayerRef = useRef<L.LayerGroup | null>(null)
   const [error, setError] = useState('')
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
@@ -100,6 +111,11 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const [noteTimestampInput, setNoteTimestampInput] = useState('')
   const [savingNote, setSavingNote] = useState(false)
   const [noteError, setNoteError] = useState('')
+
+  const [messages, setMessages] = useState<Message[]>([])
+  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null)
+  const [importingMessages, setImportingMessages] = useState(false)
+  const [messageError, setMessageError] = useState('')
   // Once the hiker edits the timestamp field directly, stop overwriting it as the timeline is
   // scrubbed — "defaults to the current scrub position" should only apply until they've made
   // their own choice.
@@ -116,20 +132,29 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setNoteContent('')
     setNoteTimestampInput('')
     setNoteError('')
+    setMessages([])
+    setSelectedMessageId(null)
+    setMessageError('')
     noteTimestampTouchedRef.current = false
 
-    Promise.all([window.api.tracks.getPoints(track.id), window.api.notes.list(track.id)])
-      .then(([fetchedPoints, fetchedNotes]) => {
+    Promise.all([
+      window.api.tracks.getPoints(track.id),
+      window.api.notes.list(track.id),
+      window.api.messages.list(track.id)
+    ])
+      .then(([fetchedPoints, fetchedNotes, fetchedMessages]) => {
         if (cancelled || !mapContainerRef.current) return
         if (mapRef.current) {
           mapRef.current.remove()
           mapRef.current = null
         }
-        const { map, marker } = renderTrackMap(mapContainerRef.current, fetchedPoints)
+        const { map, marker, messageLayer } = renderTrackMap(mapContainerRef.current, fetchedPoints)
         mapRef.current = map
         markerRef.current = marker
+        messageLayerRef.current = messageLayer
         setPoints(fetchedPoints)
         setNotes(fetchedNotes)
+        setMessages(fetchedMessages)
         if (fetchedPoints.length > 0 && fetchedPoints[0].timestamp !== null) {
           setScrubMs(Date.parse(fetchedPoints[0].timestamp as string))
         }
@@ -145,8 +170,35 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         mapRef.current = null
       }
       markerRef.current = null
+      messageLayerRef.current = null
     }
   }, [track.id])
+
+  // Message markers are re-rendered onto the map's message layer whenever `messages` changes —
+  // both on initial track load and after a fresh CSV import — rather than only once at map
+  // creation, so a newly imported batch shows up on the map immediately without reloading the
+  // track. A message's marker uses its own lat/lng straight from the CSV, independent of whether
+  // the track itself is timed (unlike the track's own position marker above).
+  useEffect(() => {
+    const layer = messageLayerRef.current
+    if (!layer) return
+    layer.clearLayers()
+    for (const message of messages) {
+      L.circleMarker([message.lat, message.lng], {
+        radius: 7,
+        weight: 2,
+        color: '#0d9488',
+        fillColor: '#2dd4bf',
+        fillOpacity: 0.9
+      })
+        .bindTooltip(message.content || '(no message text)')
+        .on('click', () => {
+          setSelectedNoteId(null)
+          setSelectedMessageId(message.id)
+        })
+        .addTo(layer)
+    }
+  }, [messages])
 
   const isTimed = points !== null && points.length > 0 && points[0].timestamp !== null
   const trackStartMs = isTimed && points ? Date.parse(points[0].timestamp as string) : null
@@ -202,7 +254,23 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     }
   }
 
+  const handleImportMessages = async (): Promise<void> => {
+    setImportingMessages(true)
+    setMessageError('')
+    try {
+      const result = await window.api.messages.importCsv(track.id)
+      if (result === null) return // hiker canceled the file dialog
+      const updated = await window.api.messages.list(track.id)
+      setMessages(updated)
+    } catch (err) {
+      setMessageError(cleanErrorMessage(err))
+    } finally {
+      setImportingMessages(false)
+    }
+  }
+
   const selectedNote = notes.find((n) => n.id === selectedNoteId) ?? null
+  const selectedMessage = messages.find((m) => m.id === selectedMessageId) ?? null
 
   return (
     <div className="track-detail-layout">
@@ -217,9 +285,13 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
           <button type="button" onClick={onWriteJournal}>
             Write journal entry
           </button>
+          <button type="button" onClick={handleImportMessages} disabled={importingMessages}>
+            {importingMessages ? 'Importing…' : 'Import messages (CSV)'}
+          </button>
         </div>
 
         {error && <p className="error">{error}</p>}
+        {messageError && <p className="error">{messageError}</p>}
         {points?.length === 0 && (
           <p className="empty">This track has no GPS points to show on the map.</p>
         )}
@@ -247,16 +319,41 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                     const clampedPct = Math.min(100, Math.max(0, pct))
                     return (
                       <button
-                        key={note.id}
+                        key={`note-${note.id}`}
                         type="button"
-                        className="timeline-marker"
+                        className="timeline-marker timeline-marker-note"
                         style={{ left: `${clampedPct}%` }}
                         aria-label={`Note at ${new Date(noteMs).toLocaleTimeString()}: ${note.content}`}
                         title={note.content}
-                        onClick={() => setSelectedNoteId(note.id)}
+                        onClick={() => {
+                          setSelectedMessageId(null)
+                          setSelectedNoteId(note.id)
+                        }}
                       />
                     )
                   })}
+                {/* Distinguished from a note dot by shape/color (diamond, teal) since both can
+                    appear on the same timeline. A message always has a timestamp (see Message's
+                    doc comment), so unlike notes there's no null-timestamp case to filter out. */}
+                {messages.map((message) => {
+                  const messageMs = Date.parse(message.timestamp)
+                  const pct = ((messageMs - trackStartMs) / (trackEndMs - trackStartMs)) * 100
+                  const clampedPct = Math.min(100, Math.max(0, pct))
+                  return (
+                    <button
+                      key={`message-${message.id}`}
+                      type="button"
+                      className="timeline-marker timeline-marker-message"
+                      style={{ left: `${clampedPct}%` }}
+                      aria-label={`Message at ${new Date(messageMs).toLocaleTimeString()}: ${message.content}`}
+                      title={message.content}
+                      onClick={() => {
+                        setSelectedNoteId(null)
+                        setSelectedMessageId(message.id)
+                      }}
+                    />
+                  )
+                })}
               </div>
             </div>
             <div className="timeline-status">
@@ -306,9 +403,33 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                 <button
                   type="button"
                   className="note-list-item"
-                  onClick={() => setSelectedNoteId(note.id)}
+                  onClick={() => {
+                    setSelectedMessageId(null)
+                    setSelectedNoteId(note.id)
+                  }}
                 >
                   {note.content}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Same timeless-track fallback as notes above: no time axis to place a dot on, so
+            messages are listed plainly instead (still clickable, still on the map). */}
+        {!isTimed && messages.length > 0 && (
+          <ul className="message-list">
+            {messages.map((message) => (
+              <li key={message.id}>
+                <button
+                  type="button"
+                  className="message-list-item"
+                  onClick={() => {
+                    setSelectedNoteId(null)
+                    setSelectedMessageId(message.id)
+                  }}
+                >
+                  {message.content || '(no message text)'}
                 </button>
               </li>
             ))}
@@ -319,6 +440,18 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       {selectedNote && (
         <SidePanel title={formatNoteTitle(selectedNote)} onClose={() => setSelectedNoteId(null)}>
           <p>{selectedNote.content}</p>
+        </SidePanel>
+      )}
+
+      {selectedMessage && (
+        <SidePanel
+          title={formatMessageTitle(selectedMessage)}
+          onClose={() => setSelectedMessageId(null)}
+        >
+          <p>{selectedMessage.content || '(no message text)'}</p>
+          <p className="message-location">
+            {selectedMessage.lat.toFixed(5)}, {selectedMessage.lng.toFixed(5)}
+          </p>
         </SidePanel>
       )}
     </div>

@@ -48,3 +48,19 @@ export interface JournalNote {
   timestamp: string | null
   createdAt: string
 }
+
+// A satellite check-in message imported from a device export (issue #11). Unlike a JournalNote,
+// timestamp/lat/lng are never null: a satellite messenger transmits its own GPS position with
+// every message, so a message is never dependent on the track's own timestamps/interpolation the
+// way a photo would be. `source` is a literal union so future sources (e.g. 'spot') type-check
+// cleanly when added — for now only 'inreach' is ever written.
+export interface Message {
+  id: number
+  trackId: number
+  content: string
+  timestamp: string
+  lat: number
+  lng: number
+  source: 'inreach'
+  createdAt: string
+}

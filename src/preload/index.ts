@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { Trip, Track, TrackPoint, Entry, GpxImportNeedsDate, JournalNote } from '../shared/types'
+import type {
+  Trip,
+  Track,
+  TrackPoint,
+  Entry,
+  GpxImportNeedsDate,
+  JournalNote,
+  Message
+} from '../shared/types'
 
 // Custom APIs for renderer
 const api = {
@@ -30,6 +38,11 @@ const api = {
     create: (trackId: number, content: string, timestamp: string | null): Promise<JournalNote> =>
       ipcRenderer.invoke('notes:create', trackId, content, timestamp),
     list: (trackId: number): Promise<JournalNote[]> => ipcRenderer.invoke('notes:list', trackId)
+  },
+  messages: {
+    importCsv: (trackId: number): Promise<Message[] | null> =>
+      ipcRenderer.invoke('messages:importCsv', trackId),
+    list: (trackId: number): Promise<Message[]> => ipcRenderer.invoke('messages:list', trackId)
   }
 }
 
