@@ -7,6 +7,8 @@ import type {
   GpxImportNeedsDate,
   JournalNote,
   Photo,
+  PendingPhoto,
+  PhotoImportNeedsOffset,
   Message
 } from '../shared/types'
 
@@ -35,7 +37,12 @@ interface Api {
   }
   photos: {
     list: (trackId: number) => Promise<Photo[]>
-    import: (trackId: number) => Promise<Photo[]>
+    import: (trackId: number) => Promise<Photo[] | PhotoImportNeedsOffset>
+    importWithOffset: (
+      trackId: number,
+      pending: PendingPhoto[],
+      offsetMinutes: number
+    ) => Promise<Photo[]>
     getDataUri: (photoId: number) => Promise<string>
   }
   messages: {

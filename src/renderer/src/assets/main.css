@@ -175,6 +175,39 @@ button:hover {
   align-items: center;
 }
 
+.offset-prompt {
+  background-color: var(--color-background-soft);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.offset-prompt label {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.offset-prompt-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.offset-prompt-input {
+  width: 90px;
+  background-color: var(--color-background);
+  border: 1px solid var(--ev-c-gray-2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.offset-prompt-unit {
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+}
+
 .tracks {
   display: flex;
   flex-direction: column;

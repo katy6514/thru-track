@@ -68,6 +68,29 @@ export interface Photo {
   createdAt: string
 }
 
+// A single photo's extracted EXIF data, captured up front by a `photos:import` call but not yet
+// copied into managed storage or written to the DB — see PhotoImportNeedsOffset below. `filePath`
+// is still the hiker's original file location at this point (the managed copy is only made once
+// `photos:importWithOffset` finalizes the batch).
+export interface PendingPhoto {
+  filePath: string
+  exifTimestamp: string | null
+  exifLat: number | null
+  exifLng: number | null
+}
+
+// Returned by `photos:import` instead of `Photo[]` when the track is timed AND at least one photo
+// in the selected batch has its own EXIF timestamp — i.e. there's an actual track clock to compare
+// against (see the Timezone Offset Detector, issue #10). The renderer must show a confirm/adjust
+// prompt for `proposedOffsetMinutes` and resubmit via `photos:importWithOffset` to actually store
+// the batch. When the track is timeless, or no photo in the batch has any EXIF timestamp at all,
+// `photos:import` skips this step entirely and imports directly (there's nothing to compare).
+export interface PhotoImportNeedsOffset {
+  needsOffsetConfirm: true
+  proposedOffsetMinutes: number
+  pending: PendingPhoto[]
+}
+
 // A satellite check-in message imported from a device export (issue #11). Unlike a JournalNote,
 // timestamp/lat/lng are never null: a satellite messenger transmits its own GPS position with
 // every message, so a message is never dependent on the track's own timestamps/interpolation the
