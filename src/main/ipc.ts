@@ -3,7 +3,7 @@ import { readFile } from 'fs/promises'
 import { basename } from 'path'
 import { getDb, pingDb } from './db'
 import { Repository, DateRequiredError } from './repository'
-import type { Track, TrackPoint, GpxImportNeedsDate } from '../shared/types'
+import type { Track, TrackPoint, GpxImportNeedsDate, JournalNote } from '../shared/types'
 
 export function registerIpcHandlers(): void {
   const repository = new Repository(getDb())
@@ -60,5 +60,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('entries:get', (_event, trackId: number) => repository.getEntry(trackId))
   ipcMain.handle('entries:save', (_event, trackId: number, text: string) =>
     repository.saveEntry(trackId, text)
+  )
+
+  ipcMain.handle(
+    'notes:create',
+    (_event, trackId: number, content: string, timestamp: string | null): JournalNote =>
+      repository.createNote(trackId, content, timestamp)
+  )
+  ipcMain.handle('notes:list', (_event, trackId: number): JournalNote[] =>
+    repository.listNotesForTrack(trackId)
   )
 }

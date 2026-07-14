@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { Trip, Track, TrackPoint, Entry, GpxImportNeedsDate } from '../shared/types'
+import type { Trip, Track, TrackPoint, Entry, GpxImportNeedsDate, JournalNote } from '../shared/types'
 
 interface Api {
   pingDb: () => Promise<{ dbPath: string; sqliteVersion: string }>
@@ -18,6 +18,10 @@ interface Api {
   entries: {
     get: (trackId: number) => Promise<Entry | null>
     save: (trackId: number, text: string) => Promise<Entry>
+  }
+  notes: {
+    create: (trackId: number, content: string, timestamp: string | null) => Promise<JournalNote>
+    list: (trackId: number) => Promise<JournalNote[]>
   }
 }
 
