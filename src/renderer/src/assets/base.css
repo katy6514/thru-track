@@ -43,25 +43,60 @@ ul {
   list-style: none;
 }
 
+/* Two-font system, same pairing used throughout the app's own docs/guide content: a geometric
+   display sans for headings and interactive controls (the "signage" layer — titles, buttons,
+   labels), and a humanist serif for the reading experience (journal entries, notes, prose) —
+   since this app's real content is what a hiker wrote and read, that deserves a text face built
+   for reading, not a UI grotesque. */
+:root {
+  --font-display:
+    Futura,
+    'Century Gothic',
+    'Avenir Next Condensed',
+    'Trebuchet MS',
+    sans-serif;
+  --font-body:
+    Georgia,
+    'Iowan Old Style',
+    'Palatino Linotype',
+    Palatino,
+    serif;
+  --font-mono:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    Liberation Mono,
+    monospace;
+}
+
 body {
   min-height: 100vh;
   color: var(--color-text);
   background: var(--color-background);
   line-height: 1.6;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
-    'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-body);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+button {
+  font-family: var(--font-display);
+}
+
+h1,
+h2 {
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+h3,
+h4 {
+  font-weight: 600;
 }
