@@ -56,9 +56,25 @@ button:hover {
   margin: 0 auto;
 }
 
+.trip-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
 .trip-list h1 {
   font-size: 28px;
-  margin-bottom: 24px;
+}
+
+.how-to-link {
+  background: none;
+  border: 1px solid var(--ev-c-gray-2);
+}
+
+.how-to-link:hover {
+  background-color: var(--ev-button-alt-hover-bg);
 }
 
 .new-trip-form {
@@ -583,4 +599,327 @@ button:hover {
 
 .journal-status-error {
   color: #ff6b6b;
+}
+
+/* ---------- How-to guide ---------- */
+
+.how-to {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.how-to h1 {
+  font-size: 28px;
+  margin: 16px 0 12px;
+}
+
+.how-to-dek {
+  color: var(--ev-c-text-2);
+  max-width: 60ch;
+  margin-bottom: 20px;
+}
+
+.how-to-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 14px 16px;
+  background-color: var(--color-background-soft);
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.how-to-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+}
+
+.how-to-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.how-to-swatch-trail {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background-color: #2563eb;
+}
+
+.how-to-swatch-note {
+  background-color: #f5a623;
+}
+
+.how-to-swatch-photo {
+  border-radius: 3px;
+  background-color: #4ade80;
+}
+
+.how-to-swatch-message {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background-color: #2dd4bf;
+}
+
+.how-to-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.how-to-flow-step {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 1px solid var(--ev-c-gray-2);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.how-to-flow-arrow {
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+}
+
+.how-to-toc {
+  border-top: 1px solid var(--ev-c-gray-3);
+  border-bottom: 1px solid var(--ev-c-gray-3);
+  padding: 14px 0;
+  margin-bottom: 8px;
+}
+
+.how-to-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 20px;
+}
+
+.how-to-toc a {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 14.5px;
+}
+
+.how-to-toc a:hover {
+  text-decoration: underline;
+}
+
+.how-to-toc-num {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    Liberation Mono,
+    monospace;
+  color: var(--ev-c-text-2);
+  font-size: 12.5px;
+}
+
+.how-to-chapter {
+  padding-top: 40px;
+  margin-top: 40px;
+  border-top: 1px solid var(--ev-c-gray-3);
+}
+
+.how-to-chapter:first-of-type {
+  border-top: none;
+}
+
+.how-to-chapter-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.how-to-chapter-num {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    Liberation Mono,
+    monospace;
+  font-size: 13px;
+  color: var(--ev-c-text-2);
+}
+
+.how-to-chapter h2 {
+  font-size: 22px;
+}
+
+.how-to-lede {
+  color: var(--ev-c-text-2);
+  max-width: 60ch;
+  margin: 8px 0 20px;
+}
+
+.how-to-chapter h3 {
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-2);
+  margin: 28px 0 10px;
+}
+
+.how-to-chapter p {
+  max-width: 64ch;
+  margin-bottom: 14px;
+}
+
+.how-to-steps {
+  padding-left: 0;
+  list-style: none;
+  counter-reset: step;
+  max-width: 64ch;
+  margin-bottom: 14px;
+}
+
+.how-to-steps > li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 32px;
+  margin-bottom: 12px;
+}
+
+.how-to-steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0.05em;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--ev-c-gray-2);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    Liberation Mono,
+    monospace;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ev-c-text-2);
+}
+
+.mono-inline {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    SF Mono,
+    Menlo,
+    Consolas,
+    Liberation Mono,
+    monospace;
+  font-size: 0.92em;
+}
+
+.how-to-callout {
+  border-left: 3px solid #2563eb;
+  background-color: var(--color-background-soft);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  margin: 16px 0;
+  max-width: 62ch;
+}
+
+.how-to-callout p:last-child {
+  margin-bottom: 0;
+}
+
+.how-to-callout-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b93e8;
+  margin-bottom: 6px;
+}
+
+.how-to-callout-note {
+  border-left-color: #f5a623;
+}
+
+.how-to-callout-note .how-to-callout-label {
+  color: #f5a623;
+}
+
+.how-to-callout-photo {
+  border-left-color: #4ade80;
+}
+
+.how-to-callout-photo .how-to-callout-label {
+  color: #4ade80;
+}
+
+.how-to-callout-message {
+  border-left-color: #2dd4bf;
+}
+
+.how-to-callout-message .how-to-callout-label {
+  color: #2dd4bf;
+}
+
+.how-to-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.how-to-reftable-wrap {
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+.how-to-reftable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 520px;
+}
+
+.how-to-reftable th {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ev-c-text-2);
+  text-align: left;
+  font-weight: 600;
+  padding: 0 12px 10px 0;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+}
+
+.how-to-reftable td {
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--ev-c-gray-3);
+  vertical-align: top;
+}
+
+.how-to-reftable tr:last-child td {
+  border-bottom: none;
 }

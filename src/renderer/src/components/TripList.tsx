@@ -4,9 +4,10 @@ import { cleanErrorMessage } from '../cleanErrorMessage'
 
 interface TripListProps {
   onSelectTrip: (trip: Trip) => void
+  onShowHowTo: () => void
 }
 
-function TripList({ onSelectTrip }: TripListProps): React.JSX.Element {
+function TripList({ onSelectTrip, onShowHowTo }: TripListProps): React.JSX.Element {
   const [trips, setTrips] = useState<Trip[]>([])
   const [newTripName, setNewTripName] = useState('')
   const [renamingId, setRenamingId] = useState<number | null>(null)
@@ -69,7 +70,12 @@ function TripList({ onSelectTrip }: TripListProps): React.JSX.Element {
 
   return (
     <div className="trip-list">
-      <h1>Trips</h1>
+      <div className="trip-list-header">
+        <h1>Trips</h1>
+        <button type="button" className="how-to-link" onClick={onShowHowTo}>
+          How to use this app
+        </button>
+      </div>
 
       <form className="new-trip-form" onSubmit={handleCreate}>
         <input
