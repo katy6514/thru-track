@@ -15,6 +15,14 @@ import type {
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
 import { interpolatePosition } from '../../../shared/positionInterpolator'
+import {
+  zoomIn as zoomWindowIn,
+  zoomOut as zoomWindowOut,
+  pan as panWindow,
+  clampToWindow,
+  percentInWindow,
+  type TimeWindow
+} from '../../../shared/timelineWindow'
 import SidePanel from './SidePanel'
 
 // Leaflet's default marker icon references relative image paths that resolve fine when its CSS
@@ -149,6 +157,11 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
+  // The timeline's currently-visible [startMs, endMs] slice — defaults to the full track range
+  // and narrows/shifts via the zoom/pan controls below. Kept separate from trackStartMs/
+  // trackEndMs (the track's fixed full-day bounds) so those bounds stay available to clamp
+  // zooming/panning against even while `visibleWindow` itself is narrower.
+  const [visibleWindow, setVisibleWindow] = useState<TimeWindow | null>(null)
 
   const [notes, setNotes] = useState<JournalNote[]>([])
   const [noteContent, setNoteContent] = useState('')
@@ -188,6 +201,10 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setPoints(null)
     setScrubMs(null)
     setScrubStatus('ok')
+    // A stale zoom/pan window from a previously-viewed track must never leak into a newly-opened
+    // one — reset alongside scrubMs/points below, and re-derived to the full range once the new
+    // track's points load (see the .then callback).
+    setVisibleWindow(null)
     setNotes([])
     setPhotos([])
     setMessages([])
@@ -223,7 +240,10 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         setPhotos(fetchedPhotos)
         setMessages(fetchedMessages)
         if (fetchedPoints.length > 0 && fetchedPoints[0].timestamp !== null) {
-          setScrubMs(Date.parse(fetchedPoints[0].timestamp as string))
+          const startMs = Date.parse(fetchedPoints[0].timestamp as string)
+          const endMs = Date.parse(fetchedPoints[fetchedPoints.length - 1].timestamp as string)
+          setScrubMs(startMs)
+          setVisibleWindow({ startMs, endMs })
         }
       })
       .catch((err) => {
@@ -296,9 +316,12 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     }
   }, [scrubMs])
 
-  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>): void => {
+  // The single place that moves the map marker to match an absolute epoch-ms instant — shared by
+  // the slider's onChange below and by the zoom/pan handlers (which need to re-sync the marker
+  // whenever narrowing/shifting the visible window clamps `scrubMs` to a new position), so there's
+  // only ever one implementation of "move the marker" to keep correct.
+  const applyScrub = (ms: number): void => {
     if (!points) return
-    const ms = Number(e.target.value)
     setScrubMs(ms)
 
     const result = interpolatePosition(points, ms)
@@ -313,6 +336,46 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       markerRef.current.setOpacity(0)
     }
   }
+
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    applyScrub(Number(e.target.value))
+  }
+
+  // Applies a zoom/pan window change: updates `visibleWindow`, then re-syncs `scrubMs` and the map
+  // marker through the exact same `applyScrub` path a manual slider drag uses — if the scrub
+  // position falls outside the new window it's clamped to the nearest edge, exactly like a normal
+  // scrub to that instant would behave.
+  const applyWindowChange = (newWindow: TimeWindow): void => {
+    setVisibleWindow(newWindow)
+    if (scrubMs !== null) {
+      applyScrub(clampToWindow(scrubMs, newWindow))
+    }
+  }
+
+  const handleZoomIn = (): void => {
+    if (!visibleWindow || trackStartMs === null || trackEndMs === null || scrubMs === null) return
+    const bounds: TimeWindow = { startMs: trackStartMs, endMs: trackEndMs }
+    applyWindowChange(zoomWindowIn(visibleWindow, bounds, scrubMs))
+  }
+
+  const handleZoomOut = (): void => {
+    if (!visibleWindow || trackStartMs === null || trackEndMs === null || scrubMs === null) return
+    const bounds: TimeWindow = { startMs: trackStartMs, endMs: trackEndMs }
+    applyWindowChange(zoomWindowOut(visibleWindow, bounds, scrubMs))
+  }
+
+  const handlePan = (direction: 'earlier' | 'later'): void => {
+    if (!visibleWindow || trackStartMs === null || trackEndMs === null) return
+    const bounds: TimeWindow = { startMs: trackStartMs, endMs: trackEndMs }
+    applyWindowChange(panWindow(visibleWindow, bounds, direction))
+  }
+
+  const isFullyZoomedOut =
+    !!visibleWindow &&
+    trackStartMs !== null &&
+    trackEndMs !== null &&
+    visibleWindow.startMs <= trackStartMs &&
+    visibleWindow.endMs >= trackEndMs
 
   const handleAddNote = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -370,11 +433,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setImportingPhotos(true)
     setPhotoError('')
     try {
-      await window.api.photos.importWithOffset(
-        track.id,
-        pendingOffsetImport.pending,
-        offsetMinutes
-      )
+      await window.api.photos.importWithOffset(track.id, pendingOffsetImport.pending, offsetMinutes)
       setPendingOffsetImport(null)
       const updated = await window.api.photos.list(track.id)
       setPhotos(updated)
@@ -451,6 +510,21 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const timelinePhotos = isTimed ? photos.filter((p) => p.timestamp !== null) : []
   const fallbackListPhotos = isTimed ? photos.filter((p) => p.timestamp === null) : photos
 
+  // Items that fall outside the current visible window aren't rendered as markers at all (see
+  // percentInWindow's null case below) — this count backs a small "N items outside this view"
+  // notice so a hiker who's zoomed in isn't left wondering whether an item just vanished.
+  const hiddenItemsCount = visibleWindow
+    ? notes.filter(
+        (n) =>
+          n.timestamp !== null && percentInWindow(Date.parse(n.timestamp), visibleWindow) === null
+      ).length +
+      timelinePhotos.filter(
+        (p) => percentInWindow(Date.parse(p.timestamp as string), visibleWindow) === null
+      ).length +
+      messages.filter((m) => percentInWindow(Date.parse(m.timestamp), visibleWindow) === null)
+        .length
+    : 0
+
   return (
     <div className="track-detail-layout">
       <div className="track-detail">
@@ -479,8 +553,9 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         {pendingOffsetImport && (
           <form className="offset-prompt" onSubmit={handleConfirmOffset}>
             <label htmlFor="offset-prompt-input">
-              These photos&apos; timestamps look {formatOffset(pendingOffsetImport.proposedOffsetMinutes)}{' '}
-              from the track&apos;s clock — apply this correction before placing them?
+              These photos&apos; timestamps look{' '}
+              {formatOffset(pendingOffsetImport.proposedOffsetMinutes)} from the track&apos;s clock
+              — apply this correction before placing them?
             </label>
             <div className="offset-prompt-controls">
               <input
@@ -494,7 +569,9 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                 required
                 autoFocus
               />
-              <span className="offset-prompt-unit">minutes ({formatOffset(Number(offsetInput) || 0)})</span>
+              <span className="offset-prompt-unit">
+                minutes ({formatOffset(Number(offsetInput) || 0)})
+              </span>
               <button type="submit" disabled={importingPhotos}>
                 {importingPhotos ? 'Importing…' : 'Confirm'}
               </button>
@@ -514,84 +591,131 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
 
         <div className="track-map" ref={mapContainerRef} />
 
-        {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (
-          <div className="timeline">
-            <div className="timeline-track">
-              <input
-                className="timeline-slider"
-                type="range"
-                min={trackStartMs}
-                max={trackEndMs}
-                step={1000}
-                value={scrubMs}
-                onChange={handleScrub}
-              />
-              <div className="timeline-markers">
-                {notes
-                  .filter(
-                    (note): note is JournalNote & { timestamp: string } => note.timestamp !== null
-                  )
-                  .map((note) => {
-                    const noteMs = Date.parse(note.timestamp)
-                    const pct = ((noteMs - trackStartMs) / (trackEndMs - trackStartMs)) * 100
-                    const clampedPct = Math.min(100, Math.max(0, pct))
+        {isTimed &&
+          trackStartMs !== null &&
+          trackEndMs !== null &&
+          scrubMs !== null &&
+          visibleWindow !== null && (
+            <div className="timeline">
+              <div className="timeline-controls">
+                <button
+                  type="button"
+                  className="timeline-control-button"
+                  onClick={() => handlePan('earlier')}
+                  disabled={visibleWindow.startMs <= trackStartMs}
+                  aria-label="Pan earlier"
+                  title="Pan earlier"
+                >
+                  &#9664;
+                </button>
+                <button
+                  type="button"
+                  className="timeline-control-button"
+                  onClick={handleZoomOut}
+                  disabled={isFullyZoomedOut}
+                  aria-label="Zoom out"
+                >
+                  Zoom out
+                </button>
+                <button type="button" className="timeline-control-button" onClick={handleZoomIn}>
+                  Zoom in
+                </button>
+                <button
+                  type="button"
+                  className="timeline-control-button"
+                  onClick={() => handlePan('later')}
+                  disabled={visibleWindow.endMs >= trackEndMs}
+                  aria-label="Pan later"
+                  title="Pan later"
+                >
+                  &#9654;
+                </button>
+                <span className="timeline-window-range">
+                  {new Date(visibleWindow.startMs).toLocaleTimeString()} &ndash;{' '}
+                  {new Date(visibleWindow.endMs).toLocaleTimeString()}
+                </span>
+              </div>
+              <div className="timeline-track">
+                <input
+                  className="timeline-slider"
+                  type="range"
+                  min={visibleWindow.startMs}
+                  max={visibleWindow.endMs}
+                  step={1000}
+                  value={scrubMs}
+                  onChange={handleScrub}
+                />
+                <div className="timeline-markers">
+                  {notes
+                    .filter(
+                      (note): note is JournalNote & { timestamp: string } => note.timestamp !== null
+                    )
+                    .map((note) => {
+                      const noteMs = Date.parse(note.timestamp)
+                      const pct = percentInWindow(noteMs, visibleWindow)
+                      if (pct === null) return null
+                      return (
+                        <button
+                          key={`note-${note.id}`}
+                          type="button"
+                          className="timeline-marker timeline-marker-note"
+                          style={{ left: `${pct}%` }}
+                          aria-label={`Note at ${new Date(noteMs).toLocaleTimeString()}: ${note.content}`}
+                          title={note.content}
+                          onClick={() => setSelectedItem({ kind: 'note', id: note.id })}
+                        />
+                      )
+                    })}
+                  {timelinePhotos.map((photo) => {
+                    const photoMs = Date.parse(photo.timestamp as string)
+                    const pct = percentInWindow(photoMs, visibleWindow)
+                    if (pct === null) return null
                     return (
                       <button
-                        key={`note-${note.id}`}
+                        key={`photo-${photo.id}`}
                         type="button"
-                        className="timeline-marker timeline-marker-note"
-                        style={{ left: `${clampedPct}%` }}
-                        aria-label={`Note at ${new Date(noteMs).toLocaleTimeString()}: ${note.content}`}
-                        title={note.content}
-                        onClick={() => setSelectedItem({ kind: 'note', id: note.id })}
+                        className="timeline-marker timeline-marker-photo"
+                        style={{ left: `${pct}%` }}
+                        aria-label={`Photo at ${new Date(photoMs).toLocaleTimeString()}`}
+                        title="Photo"
+                        onClick={() => setSelectedItem({ kind: 'photo', id: photo.id })}
                       />
                     )
                   })}
-                {timelinePhotos.map((photo) => {
-                  const photoMs = Date.parse(photo.timestamp as string)
-                  const pct = ((photoMs - trackStartMs) / (trackEndMs - trackStartMs)) * 100
-                  const clampedPct = Math.min(100, Math.max(0, pct))
-                  return (
-                    <button
-                      key={`photo-${photo.id}`}
-                      type="button"
-                      className="timeline-marker timeline-marker-photo"
-                      style={{ left: `${clampedPct}%` }}
-                      aria-label={`Photo at ${new Date(photoMs).toLocaleTimeString()}`}
-                      title="Photo"
-                      onClick={() => setSelectedItem({ kind: 'photo', id: photo.id })}
-                    />
-                  )
-                })}
-                {/* Distinguished from a note dot by shape/color (diamond, teal) since both can
+                  {/* Distinguished from a note dot by shape/color (diamond, teal) since both can
                     appear on the same timeline. A message always has a timestamp (see Message's
                     doc comment), so unlike notes there's no null-timestamp case to filter out. */}
-                {messages.map((message) => {
-                  const messageMs = Date.parse(message.timestamp)
-                  const pct = ((messageMs - trackStartMs) / (trackEndMs - trackStartMs)) * 100
-                  const clampedPct = Math.min(100, Math.max(0, pct))
-                  return (
-                    <button
-                      key={`message-${message.id}`}
-                      type="button"
-                      className="timeline-marker timeline-marker-message"
-                      style={{ left: `${clampedPct}%` }}
-                      aria-label={`Message at ${new Date(messageMs).toLocaleTimeString()}: ${message.content}`}
-                      title={message.content}
-                      onClick={() => setSelectedItem({ kind: 'message', id: message.id })}
-                    />
-                  )
-                })}
+                  {messages.map((message) => {
+                    const messageMs = Date.parse(message.timestamp)
+                    const pct = percentInWindow(messageMs, visibleWindow)
+                    if (pct === null) return null
+                    return (
+                      <button
+                        key={`message-${message.id}`}
+                        type="button"
+                        className="timeline-marker timeline-marker-message"
+                        style={{ left: `${pct}%` }}
+                        aria-label={`Message at ${new Date(messageMs).toLocaleTimeString()}: ${message.content}`}
+                        title={message.content}
+                        onClick={() => setSelectedItem({ kind: 'message', id: message.id })}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="timeline-status">
+                <span>{new Date(scrubMs).toLocaleTimeString()}</span>
+                {scrubStatus === 'gap' && (
+                  <span className="timeline-gap-notice">No track data here (recording gap)</span>
+                )}
+                {hiddenItemsCount > 0 && (
+                  <span className="timeline-hidden-notice">
+                    {hiddenItemsCount} item{hiddenItemsCount === 1 ? '' : 's'} outside this view
+                  </span>
+                )}
               </div>
             </div>
-            <div className="timeline-status">
-              <span>{new Date(scrubMs).toLocaleTimeString()}</span>
-              {scrubStatus === 'gap' && (
-                <span className="timeline-gap-notice">No track data here (recording gap)</span>
-              )}
-            </div>
-          </div>
-        )}
+          )}
 
         {points !== null && points.length > 0 && (
           <form className="note-form" onSubmit={handleAddNote}>
@@ -698,7 +822,10 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       )}
 
       {selectedMessage && (
-        <SidePanel title={formatMessageTitle(selectedMessage)} onClose={() => setSelectedItem(null)}>
+        <SidePanel
+          title={formatMessageTitle(selectedMessage)}
+          onClose={() => setSelectedItem(null)}
+        >
           <p>{selectedMessage.content || '(no message text)'}</p>
           <p className="message-location">
             {selectedMessage.lat.toFixed(5)}, {selectedMessage.lng.toFixed(5)}

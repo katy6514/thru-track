@@ -297,6 +297,28 @@ button:hover {
   margin-top: 16px;
 }
 
+/* Zoom/pan controls sit above the slider as a compact toolbar rather than full-size action
+   buttons — they're pressed repeatedly while dialing in a cluster, so a smaller footprint reads
+   better than the larger buttons used for one-off actions like "Import photos". */
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.timeline-control-button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.timeline-window-range {
+  margin-left: 8px;
+  color: var(--ev-c-text-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .timeline-track {
   position: relative;
 }
@@ -373,6 +395,12 @@ button:hover {
 
 .timeline-gap-notice {
   color: #ff6b6b;
+}
+
+/* Same muted-secondary treatment as the rest of .timeline-status — this is informational, not an
+   error, unlike .timeline-gap-notice above. */
+.timeline-hidden-notice {
+  color: var(--ev-c-text-2);
 }
 
 .note-form {
