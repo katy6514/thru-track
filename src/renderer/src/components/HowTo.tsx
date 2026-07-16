@@ -11,8 +11,8 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
 
       <h1>How to use Thru Track</h1>
       <p className="how-to-dek">
-        A local-first desk for reconstructing a day on trail — your GPS track, your photos, your
-        satellite check-ins, and your own words, all lined up against the same clock. This is the
+        A local-first desktop app for reconstructing a day on trail by combining all types of data you have captured: your GPS track, your photos, your
+        satellite check-ins, and any notes, all lined up against the same track. This is the
         whole app, front to back.
       </p>
 
