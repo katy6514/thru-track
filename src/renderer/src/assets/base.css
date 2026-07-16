@@ -1,3 +1,9 @@
+/* Theme tokens. The app switches between the dark and light blocks below by setting
+   data-theme="dark" | "light" on the root element (see src/renderer/src/theme.ts) based on local
+   clock time, not OS preference — so a bare :root fallback (matching the dark block, the app's
+   original look) is defined first in case anything paints before that attribute is set. Accent
+   colors used only on the map (Leaflet layers, composited over always-light map tiles) are left
+   as plain hex in main.css/TrackDetail.tsx and intentionally don't participate in this system. */
 :root {
   --ev-c-white: #ffffff;
   --ev-c-white-soft: #f8f8f8;
@@ -21,14 +27,104 @@
   --ev-button-alt-hover-border: transparent;
   --ev-button-alt-hover-text: var(--ev-c-text-1);
   --ev-button-alt-hover-bg: var(--ev-c-gray-2);
-}
 
-:root {
   --color-background: var(--ev-c-black);
   --color-background-soft: var(--ev-c-black-soft);
   --color-background-mute: var(--ev-c-black-mute);
-
   --color-text: var(--ev-c-text-1);
+
+  --accent-trail: #2563eb;
+  --accent-trail-label: #6b93e8;
+  --accent-note: #f5a623;
+  --accent-note-hover: #ffc266;
+  --accent-photo: #4ade80;
+  --accent-photo-hover: #86efac;
+  --accent-message: #2dd4bf;
+  --accent-message-hover: #5eead4;
+  --accent-danger: #ff6b6b;
+}
+
+:root[data-theme='dark'] {
+  --ev-c-white: #ffffff;
+  --ev-c-white-soft: #f8f8f8;
+  --ev-c-white-mute: #f2f2f2;
+
+  --ev-c-black: #1b1b1f;
+  --ev-c-black-soft: #222222;
+  --ev-c-black-mute: #282828;
+
+  --ev-c-gray-1: #515c67;
+  --ev-c-gray-2: #414853;
+  --ev-c-gray-3: #32363f;
+
+  --ev-c-text-1: rgba(255, 255, 245, 0.86);
+  --ev-c-text-2: rgba(235, 235, 245, 0.6);
+  --ev-c-text-3: rgba(235, 235, 245, 0.38);
+
+  --ev-button-alt-border: transparent;
+  --ev-button-alt-text: var(--ev-c-text-1);
+  --ev-button-alt-bg: var(--ev-c-gray-3);
+  --ev-button-alt-hover-border: transparent;
+  --ev-button-alt-hover-text: var(--ev-c-text-1);
+  --ev-button-alt-hover-bg: var(--ev-c-gray-2);
+
+  --color-background: var(--ev-c-black);
+  --color-background-soft: var(--ev-c-black-soft);
+  --color-background-mute: var(--ev-c-black-mute);
+  --color-text: var(--ev-c-text-1);
+
+  --accent-trail: #2563eb;
+  --accent-trail-label: #6b93e8;
+  --accent-note: #f5a623;
+  --accent-note-hover: #ffc266;
+  --accent-photo: #4ade80;
+  --accent-photo-hover: #86efac;
+  --accent-message: #2dd4bf;
+  --accent-message-hover: #5eead4;
+  --accent-danger: #ff6b6b;
+}
+
+/* Light palette: a sage-tinted "paper" ground rather than stark white, in the same family as the
+   in-app how-to guide's own light styling — chosen instead of a default white/gray so the two
+   feel like one visual identity rather than a generic light-mode inversion. */
+:root[data-theme='light'] {
+  --ev-c-white: #ffffff;
+  --ev-c-white-soft: #f8f8f8;
+  --ev-c-white-mute: #f2f2f2;
+
+  --ev-c-black: #1b1b1f;
+  --ev-c-black-soft: #222222;
+  --ev-c-black-mute: #282828;
+
+  --ev-c-gray-1: #b7bfb0;
+  --ev-c-gray-2: #cbd1c3;
+  --ev-c-gray-3: #dde2d5;
+
+  --ev-c-text-1: #1b211d;
+  --ev-c-text-2: #5b6660;
+  --ev-c-text-3: rgba(27, 33, 29, 0.42);
+
+  --ev-button-alt-border: transparent;
+  --ev-button-alt-text: var(--ev-c-text-1);
+  --ev-button-alt-bg: var(--ev-c-gray-3);
+  --ev-button-alt-hover-border: transparent;
+  --ev-button-alt-hover-text: var(--ev-c-text-1);
+  --ev-button-alt-hover-bg: var(--ev-c-gray-2);
+
+  --color-background: #eef0ea;
+  --color-background-soft: #e2e6dc;
+  --color-background-mute: #d7dbcd;
+  --color-text: var(--ev-c-text-1);
+
+  --accent-trail: #1d4ed8;
+  --accent-trail-label: #1d4ed8;
+  --accent-note: #a8680a;
+  --accent-note-hover: #8a5508;
+  --accent-photo: #157a3d;
+  --accent-photo-hover: #0f5c2e;
+  --accent-message: #0c8378;
+  --accent-message-hover: #095e56;
+  --accent-danger: #d13c3c;
 }
 
 *,
