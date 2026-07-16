@@ -81,7 +81,7 @@ button:hover {
 }
 
 .error {
-  color: #ff6b6b;
+  color: var(--accent-danger);
   margin-bottom: 16px;
 }
 
@@ -359,24 +359,24 @@ button:hover {
   padding: 0;
   border: 2px solid var(--color-background);
   border-radius: 50%;
-  background-color: #f5a623;
+  background-color: var(--accent-note);
   pointer-events: auto;
   cursor: pointer;
 }
 
 .timeline-marker:hover {
-  background-color: #ffc266;
+  background-color: var(--accent-note-hover);
 }
 
 /* Same shape/positioning as .timeline-marker, distinguished by color and a square rather than
    round outline so a photo reads differently from a note at a glance on the timeline strip. */
 .timeline-marker-photo {
   border-radius: 3px;
-  background-color: #4ade80;
+  background-color: var(--accent-photo);
 }
 
 .timeline-marker-photo:hover {
-  background-color: #86efac;
+  background-color: var(--accent-photo-hover);
 }
 
 /* A message dot is shaped differently from a note dot (diamond vs. circle) and colored teal to
@@ -388,11 +388,11 @@ button:hover {
   height: 9px;
   border-radius: 2px;
   transform: translateX(-50%) rotate(45deg);
-  background-color: #2dd4bf;
+  background-color: var(--accent-message);
 }
 
 .timeline-marker-message:hover {
-  background-color: #5eead4;
+  background-color: var(--accent-message-hover);
 }
 
 .timeline-status {
@@ -405,7 +405,7 @@ button:hover {
 }
 
 .timeline-gap-notice {
-  color: #ff6b6b;
+  color: var(--accent-danger);
 }
 
 /* Same muted-secondary treatment as the rest of .timeline-status — this is informational, not an
@@ -508,7 +508,7 @@ button:hover {
   text-align: left;
   background-color: var(--color-background-soft);
   border: none;
-  border-left: 3px solid #2dd4bf;
+  border-left: 3px solid var(--accent-message);
   border-radius: 8px;
   padding: 12px 16px;
   color: var(--color-text);
@@ -593,7 +593,7 @@ button:hover {
 }
 
 .journal-status-error {
-  color: #ff6b6b;
+  color: var(--accent-danger);
 }
 
 /* ---------- How-to guide ---------- */
@@ -644,16 +644,16 @@ button:hover {
   width: 16px;
   height: 3px;
   border-radius: 2px;
-  background-color: #2563eb;
+  background-color: var(--accent-trail);
 }
 
 .how-to-swatch-note {
-  background-color: #f5a623;
+  background-color: var(--accent-note);
 }
 
 .how-to-swatch-photo {
   border-radius: 3px;
-  background-color: #4ade80;
+  background-color: var(--accent-photo);
 }
 
 .how-to-swatch-message {
@@ -661,7 +661,7 @@ button:hover {
   height: 8px;
   border-radius: 2px;
   transform: rotate(45deg);
-  background-color: #2dd4bf;
+  background-color: var(--accent-message);
 }
 
 .how-to-flow {
@@ -806,7 +806,7 @@ button:hover {
 }
 
 .how-to-callout {
-  border-left: 3px solid #2563eb;
+  border-left: 3px solid var(--accent-trail);
   background-color: var(--color-background-soft);
   padding: 12px 16px;
   border-radius: 0 8px 8px 0;
@@ -825,32 +825,32 @@ button:hover {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #6b93e8;
+  color: var(--accent-trail-label);
   margin-bottom: 6px;
 }
 
 .how-to-callout-note {
-  border-left-color: #f5a623;
+  border-left-color: var(--accent-note);
 }
 
 .how-to-callout-note .how-to-callout-label {
-  color: #f5a623;
+  color: var(--accent-note);
 }
 
 .how-to-callout-photo {
-  border-left-color: #4ade80;
+  border-left-color: var(--accent-photo);
 }
 
 .how-to-callout-photo .how-to-callout-label {
-  color: #4ade80;
+  color: var(--accent-photo);
 }
 
 .how-to-callout-message {
-  border-left-color: #2dd4bf;
+  border-left-color: var(--accent-message);
 }
 
 .how-to-callout-message .how-to-callout-label {
-  color: #2dd4bf;
+  color: var(--accent-message);
 }
 
 .how-to-chip {
