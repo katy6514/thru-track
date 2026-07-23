@@ -10,6 +10,7 @@ import type {
   JournalNote,
   Photo,
   PendingPhoto,
+  PhotoImportNeedsOffset,
   Message
 } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
@@ -186,6 +187,16 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   } | null>(null)
   const [offsetInput, setOffsetInput] = useState('0')
 
+  // Set while a phone-upload session (issue #33) is running: the URL/QR the hiker's phone
+  // connects to. Null means no session is active — the server itself is only running on the main
+  // process while this is non-null.
+  const [phoneUploadSession, setPhoneUploadSession] = useState<{
+    url: string
+    qrDataUri: string
+  } | null>(null)
+  const [startingPhoneUpload, setStartingPhoneUpload] = useState(false)
+  const [phoneUploadError, setPhoneUploadError] = useState('')
+
   const [messages, setMessages] = useState<Message[]>([])
   const [importingMessages, setImportingMessages] = useState(false)
   const [messageError, setMessageError] = useState('')
@@ -216,6 +227,12 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setMessageError('')
     setPendingOffsetImport(null)
     setOffsetInput('0')
+    // A phone-upload session is scoped to the track it was started from — switching tracks (or
+    // unmounting) must not leave a server running against the day the hiker just navigated away
+    // from, so stop it here rather than requiring an explicit "Done" click every time.
+    window.api.photoUpload.stop()
+    setPhoneUploadSession(null)
+    setPhoneUploadError('')
     noteTimestampTouchedRef.current = false
 
     Promise.all([
@@ -400,29 +417,63 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     }
   }
 
+  // Shared by the file-picker import below and the phone-upload event listener further down —
+  // both paths resolve to the same Photo[] | PhotoImportNeedsOffset shape, so a batch that needs
+  // an offset confirmation surfaces through the same prompt regardless of where it came from.
+  const applyPhotoImportResult = (result: Photo[] | PhotoImportNeedsOffset): void => {
+    if ('needsOffsetConfirm' in result) {
+      // Nothing has been stored yet — hold the pending batch until the hiker confirms (or
+      // adjusts) the proposed offset via handleConfirmOffset below.
+      setPendingOffsetImport({
+        pending: result.pending,
+        proposedOffsetMinutes: result.proposedOffsetMinutes
+      })
+      setOffsetInput(String(result.proposedOffsetMinutes))
+    } else if (result.length > 0) {
+      window.api.photos.list(track.id).then(setPhotos)
+    }
+  }
+
   const handleImportPhotos = async (): Promise<void> => {
     setImportingPhotos(true)
     setPhotoError('')
     try {
       const result = await window.api.photos.import(track.id)
-      if ('needsOffsetConfirm' in result) {
-        // Nothing has been stored yet — hold the pending batch until the hiker confirms (or
-        // adjusts) the proposed offset via handleConfirmOffset below.
-        setPendingOffsetImport({
-          pending: result.pending,
-          proposedOffsetMinutes: result.proposedOffsetMinutes
-        })
-        setOffsetInput(String(result.proposedOffsetMinutes))
-      } else if (result.length > 0) {
-        const updated = await window.api.photos.list(track.id)
-        setPhotos(updated)
-      }
+      applyPhotoImportResult(result)
     } catch (err) {
       setPhotoError(cleanErrorMessage(err))
     } finally {
       setImportingPhotos(false)
     }
   }
+
+  const handleStartPhoneUpload = async (): Promise<void> => {
+    setStartingPhoneUpload(true)
+    setPhoneUploadError('')
+    try {
+      const session = await window.api.photoUpload.start(track.id)
+      setPhoneUploadSession(session)
+    } catch (err) {
+      setPhoneUploadError(cleanErrorMessage(err))
+    } finally {
+      setStartingPhoneUpload(false)
+    }
+  }
+
+  const handleStopPhoneUpload = async (): Promise<void> => {
+    await window.api.photoUpload.stop()
+    setPhoneUploadSession(null)
+  }
+
+  useEffect(() => {
+    const unsubReceived = window.api.photoUpload.onBatchReceived(applyPhotoImportResult)
+    const unsubError = window.api.photoUpload.onBatchError(setPhoneUploadError)
+    return () => {
+      unsubReceived()
+      unsubError()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track.id])
 
   const handleConfirmOffset = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -548,7 +599,38 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
           <button type="button" onClick={handleImportMessages} disabled={importingMessages}>
             {importingMessages ? 'Importing…' : 'Import messages (CSV)'}
           </button>
+          {phoneUploadSession ? (
+            <button type="button" onClick={handleStopPhoneUpload}>
+              Stop phone upload
+            </button>
+          ) : (
+            <button type="button" onClick={handleStartPhoneUpload} disabled={startingPhoneUpload}>
+              {startingPhoneUpload ? 'Starting…' : 'Upload from phone'}
+            </button>
+          )}
         </div>
+
+        {phoneUploadSession && (
+          <div className="phone-upload-panel">
+            <img
+              className="phone-upload-qr"
+              src={phoneUploadSession.qrDataUri}
+              alt="QR code linking to the phone upload page"
+            />
+            <div className="phone-upload-info">
+              <p>
+                On your phone, scan this code or open{' '}
+                <span className="mono-inline">{phoneUploadSession.url}</span> while it&apos;s on
+                the same wifi network (or tethered to this computer&apos;s hotspot).
+              </p>
+              <p className="phone-upload-hint">
+                Photos you send there appear here automatically. Click &ldquo;Stop phone
+                upload&rdquo; above when you&apos;re done.
+              </p>
+            </div>
+          </div>
+        )}
+        {phoneUploadError && <p className="error">{phoneUploadError}</p>}
 
         {pendingOffsetImport && (
           <form className="offset-prompt" onSubmit={handleConfirmOffset}>

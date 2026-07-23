@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   Trip,
@@ -60,6 +60,24 @@ const api = {
     importCsv: (trackId: number): Promise<Message[] | null> =>
       ipcRenderer.invoke('messages:importCsv', trackId),
     list: (trackId: number): Promise<Message[]> => ipcRenderer.invoke('messages:list', trackId)
+  },
+  photoUpload: {
+    start: (trackId: number): Promise<{ url: string; qrDataUri: string }> =>
+      ipcRenderer.invoke('photoUpload:start', trackId),
+    stop: (): Promise<void> => ipcRenderer.invoke('photoUpload:stop'),
+    onBatchReceived: (
+      callback: (result: Photo[] | PhotoImportNeedsOffset) => void
+    ): (() => void) => {
+      const listener = (_event: IpcRendererEvent, result: Photo[] | PhotoImportNeedsOffset): void =>
+        callback(result)
+      ipcRenderer.on('photoUpload:batchReceived', listener)
+      return () => ipcRenderer.removeListener('photoUpload:batchReceived', listener)
+    },
+    onBatchError: (callback: (message: string) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, message: string): void => callback(message)
+      ipcRenderer.on('photoUpload:batchError', listener)
+      return () => ipcRenderer.removeListener('photoUpload:batchError', listener)
+    }
   }
 }
 

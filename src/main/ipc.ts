@@ -5,6 +5,7 @@ import { getDb, pingDb } from './db'
 import { Repository, DateRequiredError } from './repository'
 import { extractExifData } from './exifExtractor'
 import { storePhotoFile, deletePhotoFile } from './fileStorageManager'
+import { startPhotoUploadServer, type StartedUploadServer } from './photoUploadServer'
 import { interpolatePosition } from '../shared/positionInterpolator'
 import { detectTimezoneOffset } from '../shared/timezoneOffsetDetector'
 import type {
@@ -158,6 +159,54 @@ export function registerIpcHandlers(): void {
     return imported
   }
 
+  // Shared by the file-picker import below and the phone-upload path (ipc channel photoUpload:*
+  // further down): given a batch of file paths already sitting on disk — wherever they came from
+  // — extracts EXIF and either returns a finalized import or hands back a pending batch awaiting
+  // offset confirmation. Keeping this in one place means both import paths apply identical
+  // EXIF/GPS/timezone-offset matching logic.
+  async function buildPhotoImportResult(
+    trackId: number,
+    filePaths: string[]
+  ): Promise<Photo[] | PhotoImportNeedsOffset> {
+    if (filePaths.length === 0) return []
+
+    // Fetched once up front rather than per-photo: every photo in this batch is imported against
+    // the same track, so its points/timed-ness don't change mid-loop.
+    const points = repository.getTrackPoints(trackId)
+    const isTimed = points.length > 0 && points[0].timestamp !== null
+
+    // Extract EXIF for every file, but don't finalize (copy/DB-insert) anything yet — that only
+    // happens once any offset-confirmation step below has been resolved.
+    const pending: PendingPhoto[] = []
+    for (const filePath of filePaths) {
+      const buffer = await readFile(filePath)
+      const exif = await extractExifData(buffer)
+      pending.push({
+        filePath,
+        exifTimestamp: exif.timestamp,
+        exifLat: exif.lat,
+        exifLng: exif.lng
+      })
+    }
+
+    // A timezone offset can only be detected when there's both a track clock to compare against
+    // (a timed track) and at least one photo's own EXIF clock to compare it to (a batch where
+    // every photo lacks an EXIF timestamp has nothing to offset). Either gap means there's
+    // genuinely no comparison to make, so skip the confirmation prompt and import directly —
+    // unchanged from the pre-issue-#10 behavior.
+    const trackStart = isTimed ? (points[0].timestamp as string) : null
+    const photosWithTimestamp = pending
+      .map((p) => p.exifTimestamp)
+      .filter((ts): ts is string => ts !== null)
+
+    if (trackStart !== null && photosWithTimestamp.length > 0) {
+      const { offsetMinutes } = detectTimezoneOffset(trackStart, photosWithTimestamp)
+      return { needsOffsetConfirm: true, proposedOffsetMinutes: offsetMinutes, pending }
+    }
+
+    return finalizePhotoImport(trackId, pending, 0)
+  }
+
   ipcMain.handle(
     'photos:import',
     async (event, trackId: number): Promise<Photo[] | PhotoImportNeedsOffset> => {
@@ -169,42 +218,7 @@ export function registerIpcHandlers(): void {
         filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'heic', 'heif'] }]
       })
       if (result.canceled || result.filePaths.length === 0) return []
-
-      // Fetched once up front rather than per-photo: every photo in this batch is imported
-      // against the same track, so its points/timed-ness don't change mid-loop.
-      const points = repository.getTrackPoints(trackId)
-      const isTimed = points.length > 0 && points[0].timestamp !== null
-
-      // Extract EXIF for every selected file, but don't finalize (copy/DB-insert) anything yet —
-      // that only happens once any offset-confirmation step below has been resolved.
-      const pending: PendingPhoto[] = []
-      for (const filePath of result.filePaths) {
-        const buffer = await readFile(filePath)
-        const exif = await extractExifData(buffer)
-        pending.push({
-          filePath,
-          exifTimestamp: exif.timestamp,
-          exifLat: exif.lat,
-          exifLng: exif.lng
-        })
-      }
-
-      // A timezone offset can only be detected when there's both a track clock to compare
-      // against (a timed track) and at least one photo's own EXIF clock to compare it to (a
-      // batch where every photo lacks an EXIF timestamp has nothing to offset). Either gap means
-      // there's genuinely no comparison to make, so skip the confirmation prompt and import
-      // directly — unchanged from the pre-issue-#10 behavior.
-      const trackStart = isTimed ? (points[0].timestamp as string) : null
-      const photosWithTimestamp = pending
-        .map((p) => p.exifTimestamp)
-        .filter((ts): ts is string => ts !== null)
-
-      if (trackStart !== null && photosWithTimestamp.length > 0) {
-        const { offsetMinutes } = detectTimezoneOffset(trackStart, photosWithTimestamp)
-        return { needsOffsetConfirm: true, proposedOffsetMinutes: offsetMinutes, pending }
-      }
-
-      return finalizePhotoImport(trackId, pending, 0)
+      return buildPhotoImportResult(trackId, result.filePaths)
     }
   )
 
@@ -213,6 +227,39 @@ export function registerIpcHandlers(): void {
     (_event, trackId: number, pending: PendingPhoto[], offsetMinutes: number): Promise<Photo[]> =>
       finalizePhotoImport(trackId, pending, offsetMinutes)
   )
+
+  // A phone on the same wifi/hotspot uploads straight to a short-lived local HTTP server (see
+  // photoUploadServer.ts / issue #33) instead of the hiker having to sync photos to the desktop
+  // first. Only one session runs at a time, scoped to whichever track the hiker started it from;
+  // starting a new one replaces any prior session rather than running two servers at once.
+  let activeUploadServer: StartedUploadServer | null = null
+
+  ipcMain.handle(
+    'photoUpload:start',
+    async (event, trackId: number): Promise<{ url: string; qrDataUri: string }> => {
+      activeUploadServer?.stop()
+      const window = BrowserWindow.fromWebContents(event.sender)
+      const server = await startPhotoUploadServer((files) => {
+        buildPhotoImportResult(
+          trackId,
+          files.map((f) => f.filePath)
+        )
+          .then((result) => {
+            window?.webContents.send('photoUpload:batchReceived', result)
+          })
+          .catch((err) => {
+            window?.webContents.send('photoUpload:batchError', String(err))
+          })
+      })
+      activeUploadServer = server
+      return { url: server.url, qrDataUri: server.qrDataUri }
+    }
+  )
+
+  ipcMain.handle('photoUpload:stop', (): void => {
+    activeUploadServer?.stop()
+    activeUploadServer = null
+  })
 
   ipcMain.handle('photos:getDataUri', async (_event, photoId: number): Promise<string> => {
     const photo = repository.getPhoto(photoId)
