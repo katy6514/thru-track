@@ -218,6 +218,38 @@ button:hover {
   font-size: 13px;
 }
 
+.phone-upload-panel {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background-color: var(--color-background-soft);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.phone-upload-qr {
+  flex: none;
+  width: 120px;
+  height: 120px;
+  border-radius: 6px;
+  background-color: #ffffff;
+  padding: 6px;
+}
+
+.phone-upload-info p {
+  margin-bottom: 8px;
+}
+
+.phone-upload-info p:last-child {
+  margin-bottom: 0;
+}
+
+.phone-upload-hint {
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+}
+
 .tracks {
   display: flex;
   flex-direction: column;

@@ -49,6 +49,12 @@ interface Api {
     importCsv: (trackId: number) => Promise<Message[] | null>
     list: (trackId: number) => Promise<Message[]>
   }
+  photoUpload: {
+    start: (trackId: number) => Promise<{ url: string; qrDataUri: string }>
+    stop: () => Promise<void>
+    onBatchReceived: (callback: (result: Photo[] | PhotoImportNeedsOffset) => void) => () => void
+    onBatchError: (callback: (message: string) => void) => () => void
+  }
 }
 
 declare global {
