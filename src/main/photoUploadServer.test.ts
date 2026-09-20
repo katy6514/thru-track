@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickLanAddress, startPhotoUploadServer } from './photoUploadServer'
+import { pickLanAddress, startPhotoUploadServer, startGpxUploadServer } from './photoUploadServer'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 
@@ -31,6 +31,29 @@ describe('pickLanAddress', () => {
 
   it('returns null when nothing usable is found', () => {
     expect(pickLanAddress({})).toBeNull()
+  })
+
+  it('skips a VPN tunnel interface even when it sorts before the real adapter', () => {
+    const address = pickLanAddress({
+      utun4: [{ address: '10.20.30.1', family: 'IPv4', internal: false }],
+      en0: [{ address: '192.168.1.42', family: 'IPv4', internal: false }]
+    })
+    expect(address).toBe('192.168.1.42')
+  })
+
+  it('skips a Tailscale-style carrier-grade-NAT address even under an unrecognized name', () => {
+    const address = pickLanAddress({
+      weird0: [{ address: '100.102.207.37', family: 'IPv4', internal: false }],
+      en0: [{ address: '192.168.1.42', family: 'IPv4', internal: false }]
+    })
+    expect(address).toBe('192.168.1.42')
+  })
+
+  it('falls back to any non-internal IPv4 when every interface looks virtual', () => {
+    const address = pickLanAddress({
+      utun4: [{ address: '10.20.30.1', family: 'IPv4', internal: false }]
+    })
+    expect(address).toBe('10.20.30.1')
   })
 })
 
@@ -83,6 +106,40 @@ describe('startPhotoUploadServer', () => {
     const server = await startPhotoUploadServer(() => {})
     try {
       expect(server.qrDataUri.startsWith('data:image/png;base64,')).toBe(true)
+    } finally {
+      server.stop()
+    }
+  })
+})
+
+describe('startGpxUploadServer', () => {
+  it('serves its own upload page, distinct from the photo uploader', async () => {
+    const server = await startGpxUploadServer(() => {})
+    try {
+      const res = await fetch(server.url)
+      expect(res.status).toBe(200)
+      expect(await res.text()).toContain('Send a GPX track to Thru Track')
+    } finally {
+      server.stop()
+    }
+  })
+
+  it('accepts an uploaded GPX file and reports it to the callback', async () => {
+    const received: string[] = []
+    const server = await startGpxUploadServer((files) => {
+      for (const f of files) received.push(f.originalName)
+    })
+    try {
+      const gpx =
+        '<?xml version="1.0"?><gpx><trk><trkseg>' +
+        '<trkpt lat="1" lon="2"></trkpt></trkseg></trk></gpx>'
+      const formData = new FormData()
+      formData.append('track', new Blob([gpx]), 'day1.gpx')
+
+      const uploadUrl = server.url.replace('/?t=', '/upload?t=')
+      const res = await fetch(uploadUrl, { method: 'POST', body: formData })
+      expect(res.status).toBe(200)
+      expect(received).toEqual(['day1.gpx'])
     } finally {
       server.stop()
     }

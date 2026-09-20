@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Trip, Track } from '../../../shared/types'
+import type { Trip, Track, GpxImportNeedsDate } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import TrackDetail from './TrackDetail'
 import JournalEditor from './JournalEditor'
@@ -20,6 +20,17 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   const [pendingGpxRaw, setPendingGpxRaw] = useState<string | null>(null)
   const [dateInput, setDateInput] = useState('')
 
+  // Set while a phone GPX-upload session (issue #34) is running: the URL/QR the hiker's phone
+  // connects to. Null means no session is active — the server itself only runs on the main
+  // process while this is non-null. A separate session/QR from the photo uploader on TrackDetail
+  // by design — see gpxUpload:start's doc comment in ipc.ts.
+  const [gpxUploadSession, setGpxUploadSession] = useState<{
+    url: string
+    qrDataUri: string
+  } | null>(null)
+  const [startingGpxUpload, setStartingGpxUpload] = useState(false)
+  const [gpxUploadError, setGpxUploadError] = useState('')
+
   const refresh = async (): Promise<void> => {
     setTracks(await window.api.tracks.list(trip.id))
   }
@@ -28,23 +39,67 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     refresh()
   }, [trip.id])
 
+  useEffect(() => {
+    // A GPX-upload session is scoped to the trip it was started from — switching trips (or
+    // unmounting, e.g. navigating back to the trip list) must not leave a server running, so
+    // stop it here rather than requiring an explicit "Done" click every time.
+    return () => {
+      window.api.gpxUpload.stop()
+    }
+  }, [trip.id])
+
+  // Shared by the file-picker import below and the phone-upload event listener further down —
+  // both paths resolve to the same Track | GpxImportNeedsDate shape, so a track needing a date
+  // surfaces through the same prompt regardless of where it came from.
+  const applyGpxImportResult = (result: Track | GpxImportNeedsDate): void => {
+    if ('needsDate' in result) {
+      setPendingGpxRaw(result.gpxRaw)
+      setDateInput('')
+    } else {
+      refresh()
+    }
+  }
+
   const handleImport = async (): Promise<void> => {
     setError('')
     setImporting(true)
     try {
       const result = await window.api.tracks.importGpx(trip.id)
-      if (result && 'needsDate' in result) {
-        setPendingGpxRaw(result.gpxRaw)
-        setDateInput('')
-      } else if (result) {
-        await refresh()
-      }
+      if (result) applyGpxImportResult(result)
     } catch (err) {
       setError(cleanErrorMessage(err))
     } finally {
       setImporting(false)
     }
   }
+
+  const handleStartGpxUpload = async (): Promise<void> => {
+    setStartingGpxUpload(true)
+    setGpxUploadError('')
+    try {
+      const session = await window.api.gpxUpload.start(trip.id)
+      setGpxUploadSession(session)
+    } catch (err) {
+      setGpxUploadError(cleanErrorMessage(err))
+    } finally {
+      setStartingGpxUpload(false)
+    }
+  }
+
+  const handleStopGpxUpload = async (): Promise<void> => {
+    await window.api.gpxUpload.stop()
+    setGpxUploadSession(null)
+  }
+
+  useEffect(() => {
+    const unsubReceived = window.api.gpxUpload.onReceived(applyGpxImportResult)
+    const unsubError = window.api.gpxUpload.onError(setGpxUploadError)
+    return () => {
+      unsubReceived()
+      unsubError()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id])
 
   const handleConfirmDate = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -105,7 +160,38 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
         <button type="button" onClick={handleImport} disabled={importing || !!pendingGpxRaw}>
           {importing ? 'Importing…' : 'Import GPX track'}
         </button>
+        {gpxUploadSession ? (
+          <button type="button" onClick={handleStopGpxUpload}>
+            Stop phone upload
+          </button>
+        ) : (
+          <button type="button" onClick={handleStartGpxUpload} disabled={startingGpxUpload}>
+            {startingGpxUpload ? 'Starting…' : 'Upload GPX from phone'}
+          </button>
+        )}
       </div>
+
+      {gpxUploadSession && (
+        <div className="phone-upload-panel">
+          <img
+            className="phone-upload-qr"
+            src={gpxUploadSession.qrDataUri}
+            alt="QR code linking to the phone GPX upload page"
+          />
+          <div className="phone-upload-info">
+            <p>
+              On your phone, scan this code or open{' '}
+              <span className="mono-inline">{gpxUploadSession.url}</span> while it&apos;s on the
+              same wifi network (or tethered to this computer&apos;s hotspot).
+            </p>
+            <p className="phone-upload-hint">
+              The track you send there appears here automatically. Click &ldquo;Stop phone
+              upload&rdquo; above when you&apos;re done.
+            </p>
+          </div>
+        </div>
+      )}
+      {gpxUploadError && <p className="error">{gpxUploadError}</p>}
 
       {pendingGpxRaw && (
         <form className="date-prompt" onSubmit={handleConfirmDate}>

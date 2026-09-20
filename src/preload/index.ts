@@ -78,6 +78,22 @@ const api = {
       ipcRenderer.on('photoUpload:batchError', listener)
       return () => ipcRenderer.removeListener('photoUpload:batchError', listener)
     }
+  },
+  gpxUpload: {
+    start: (tripId: number): Promise<{ url: string; qrDataUri: string }> =>
+      ipcRenderer.invoke('gpxUpload:start', tripId),
+    stop: (): Promise<void> => ipcRenderer.invoke('gpxUpload:stop'),
+    onReceived: (callback: (result: Track | GpxImportNeedsDate) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, result: Track | GpxImportNeedsDate): void =>
+        callback(result)
+      ipcRenderer.on('gpxUpload:received', listener)
+      return () => ipcRenderer.removeListener('gpxUpload:received', listener)
+    },
+    onError: (callback: (message: string) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, message: string): void => callback(message)
+      ipcRenderer.on('gpxUpload:error', listener)
+      return () => ipcRenderer.removeListener('gpxUpload:error', listener)
+    }
   }
 }
 
