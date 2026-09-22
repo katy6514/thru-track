@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { Trip, Track, GpxImportNeedsDate } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import TrackDetail from './TrackDetail'
@@ -30,6 +30,22 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   } | null>(null)
   const [startingGpxUpload, setStartingGpxUpload] = useState(false)
   const [gpxUploadError, setGpxUploadError] = useState('')
+
+  // The two ways to add a track (file picker, phone QR) collapse into one "Add track" button
+  // that pops this menu open rather than showing both as separate top-level buttons.
+  const [showAddMenu, setShowAddMenu] = useState(false)
+  const addMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showAddMenu) return
+    const handleClickOutside = (e: MouseEvent): void => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAddMenu])
 
   const refresh = async (): Promise<void> => {
     setTracks(await window.api.tracks.list(trip.id))
@@ -157,18 +173,39 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
       <h1>{trip.name}</h1>
 
       <div className="track-list-actions">
-        <button type="button" onClick={handleImport} disabled={importing || !!pendingGpxRaw}>
-          {importing ? 'Importing…' : 'Import GPX track'}
-        </button>
-        {gpxUploadSession ? (
-          <button type="button" onClick={handleStopGpxUpload}>
-            Stop phone upload
+        <div className="add-track-menu" ref={addMenuRef}>
+          <button
+            type="button"
+            onClick={() => setShowAddMenu((v) => !v)}
+            disabled={importing || startingGpxUpload}
+          >
+            {importing ? 'Importing…' : startingGpxUpload ? 'Starting…' : 'Add track ▾'}
           </button>
-        ) : (
-          <button type="button" onClick={handleStartGpxUpload} disabled={startingGpxUpload}>
-            {startingGpxUpload ? 'Starting…' : 'Upload GPX from phone'}
-          </button>
-        )}
+          {showAddMenu && (
+            <div className="add-track-menu-options">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddMenu(false)
+                  handleImport()
+                }}
+                disabled={!!pendingGpxRaw}
+              >
+                Import GPX file…
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddMenu(false)
+                  handleStartGpxUpload()
+                }}
+                disabled={!!gpxUploadSession}
+              >
+                Upload GPX from phone…
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {gpxUploadSession && (
@@ -185,9 +222,11 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
               same wifi network (or tethered to this computer&apos;s hotspot).
             </p>
             <p className="phone-upload-hint">
-              The track you send there appears here automatically. Click &ldquo;Stop phone
-              upload&rdquo; above when you&apos;re done.
+              The track you send there appears here automatically.
             </p>
+            <button type="button" onClick={handleStopGpxUpload}>
+              Stop phone upload
+            </button>
           </div>
         </div>
       )}
