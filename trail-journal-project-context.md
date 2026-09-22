@@ -133,6 +133,7 @@ The core interface is a synchronized timeline + map view:
 - **Mobile companion app.** Lightweight capture app for mid-hike notes. Syncs to desktop.
 - **Additional GPS formats.** FIT, inReach CSV, SPOT XML, KML.
 - **Cloud sync.** Opt-in only, never required. Out of scope until core local experience is solid.
+- **Basemap tile hosting at scale.** The layer switcher (Topo/Satellite/Streets/USGS Topo) hits free public tile servers directly, which is fine at today's user count but not appropriate for wide distribution — see issue #36 for per-provider usage-policy notes and options (self-hosted tile cache, paid provider with an SLA) before that becomes a real user base.
 
 ---
 
