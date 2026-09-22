@@ -167,16 +167,21 @@ button:hover {
   margin-bottom: 24px;
 }
 
-.add-track-menu {
+/* Shared by every "single button pops open a small options list" menu (the track list's "Add
+   track" and the track detail's "Add data") rather than one CSS block per instance. */
+.dropdown-menu {
   position: relative;
   display: inline-block;
 }
 
-.add-track-menu-options {
+.dropdown-menu-options {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  z-index: 10;
+  /* Leaflet's own controls sit at z-index 1000 (see its .leaflet-top/.leaflet-bottom corners) —
+     comfortably above that so the menu never opens underneath the map, regardless of where on
+     the page it's anchored. */
+  z-index: 1100;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -187,7 +192,14 @@ button:hover {
   border-radius: 8px;
 }
 
-.add-track-menu-options button {
+/* For a menu anchored to a right-aligned button (e.g. "Add data") — opens leftward instead of
+   running off the edge of the page. */
+.dropdown-menu-options-end {
+  left: auto;
+  right: 0;
+}
+
+.dropdown-menu-options button {
   background: none;
   border: none;
   padding: 8px 10px;
@@ -196,7 +208,7 @@ button:hover {
   color: var(--color-text);
 }
 
-.add-track-menu-options button:hover {
+.dropdown-menu-options button:hover {
   background-color: var(--ev-button-alt-hover-bg);
 }
 
@@ -381,10 +393,14 @@ button:hover {
   opacity: 0;
 }
 
-.track-detail-actions {
+/* The back link stays top-left, in normal flow; "Add data" sits flush top-right — the same row,
+   space-between rather than the "Add data" button being absolutely positioned, so it never needs
+   to fight the page's own layout for where it lands. */
+.track-detail-header {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin: 16px 0;
 }
 
 .timeline {

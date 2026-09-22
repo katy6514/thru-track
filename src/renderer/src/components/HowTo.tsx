@@ -236,7 +236,8 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         </p>
         <ol className="how-to-steps">
           <li>
-            From a day&rsquo;s map view, click <strong>Write journal entry</strong>.
+            From a day&rsquo;s map view, click <strong>Add data</strong> and choose{' '}
+            <strong>Edit journal entry</strong>.
           </li>
           <li>Type. Plain text only — no formatting to fuss with.</li>
           <li>
@@ -303,7 +304,8 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         </p>
         <ol className="how-to-steps">
           <li>
-            Click <strong>Import photos</strong> and select one or more image files.
+            Click <strong>Add data</strong>, choose <strong>Import photos</strong>, and select one
+            or more image files.
           </li>
           <li>
             If a photo already carries GPS location (most phone cameras record this automatically),
@@ -356,8 +358,8 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         </p>
         <ol className="how-to-steps">
           <li>
-            Click <strong>Import messages (CSV)</strong> and select the CSV export from your
-            device&rsquo;s tracking portal.
+            Click <strong>Add data</strong>, choose <strong>Import messages (CSV)</strong>, and
+            select the CSV export from your device&rsquo;s tracking portal.
           </li>
           <li>
             Each message already carries its own GPS position and timestamp straight from the device
@@ -440,7 +442,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             <tbody>
               <tr>
                 <td>Journal entry</td>
-                <td>&ldquo;Write journal entry&rdquo; from a day&rsquo;s map view</td>
+                <td>&ldquo;Add data&rdquo; &rarr; &ldquo;Edit journal entry&rdquo;</td>
                 <td>&mdash;</td>
                 <td>No</td>
               </tr>
@@ -457,7 +459,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
               </tr>
               <tr>
                 <td>Photo</td>
-                <td>&ldquo;Import photos&rdquo; from a day&rsquo;s map view</td>
+                <td>&ldquo;Add data&rdquo; &rarr; &ldquo;Import photos&rdquo;</td>
                 <td>
                   <span className="how-to-chip">
                     <span className="how-to-swatch how-to-swatch-photo" />
@@ -468,7 +470,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
               </tr>
               <tr>
                 <td>Satellite message</td>
-                <td>&ldquo;Import messages (CSV)&rdquo; from a day&rsquo;s map view</td>
+                <td>&ldquo;Add data&rdquo; &rarr; &ldquo;Import messages (CSV)&rdquo;</td>
                 <td>
                   <span className="how-to-chip">
                     <span className="how-to-swatch how-to-swatch-message" />

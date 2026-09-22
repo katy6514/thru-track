@@ -250,6 +250,22 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const [importingMessages, setImportingMessages] = useState(false)
   const [messageError, setMessageError] = useState('')
 
+  // The journal/photos/messages actions collapse into one "Add data" button that pops this menu
+  // open, mirroring the track list's "Add track" menu (see TrackList.tsx).
+  const [showAddDataMenu, setShowAddDataMenu] = useState(false)
+  const addDataMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showAddDataMenu) return
+    const handleClickOutside = (e: MouseEvent): void => {
+      if (addDataMenuRef.current && !addDataMenuRef.current.contains(e.target as Node)) {
+        setShowAddDataMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAddDataMenu])
+
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null)
   const [photoDataUri, setPhotoDataUri] = useState<string | null>(null)
   const [photoDataLoading, setPhotoDataLoading] = useState(false)
@@ -282,6 +298,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     window.api.photoUpload.stop()
     setPhoneUploadSession(null)
     setPhoneUploadError('')
+    setShowAddDataMenu(false)
     noteTimestampTouchedRef.current = false
 
     Promise.all([
@@ -628,36 +645,72 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   return (
     <div className="track-detail-layout">
       <div className="track-detail">
-        <button type="button" className="back-link" onClick={onBack}>
-          &larr; Back to tracks
-        </button>
+        <div className="track-detail-header">
+          <button type="button" className="back-link" onClick={onBack}>
+            &larr; Back to tracks
+          </button>
+
+          <div className="dropdown-menu" ref={addDataMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowAddDataMenu((v) => !v)}
+              disabled={
+                importingPhotos || !!pendingOffsetImport || importingMessages || startingPhoneUpload
+              }
+            >
+              {importingPhotos
+                ? 'Importing photos…'
+                : importingMessages
+                  ? 'Importing…'
+                  : startingPhoneUpload
+                    ? 'Starting…'
+                    : 'Add data ▾'}
+            </button>
+            {showAddDataMenu && (
+              <div className="dropdown-menu-options dropdown-menu-options-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    onWriteJournal()
+                  }}
+                >
+                  Edit journal entry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    handleImportPhotos()
+                  }}
+                >
+                  Import photos…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    handleImportMessages()
+                  }}
+                >
+                  Import messages (CSV)…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    handleStartPhoneUpload()
+                  }}
+                  disabled={!!phoneUploadSession}
+                >
+                  Upload from phone…
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
 
         <h1>{track.name}</h1>
-
-        <div className="track-detail-actions">
-          <button type="button" onClick={onWriteJournal}>
-            Write journal entry
-          </button>
-          <button
-            type="button"
-            onClick={handleImportPhotos}
-            disabled={importingPhotos || !!pendingOffsetImport}
-          >
-            {importingPhotos ? 'Importing photos…' : 'Import photos'}
-          </button>
-          <button type="button" onClick={handleImportMessages} disabled={importingMessages}>
-            {importingMessages ? 'Importing…' : 'Import messages (CSV)'}
-          </button>
-          {phoneUploadSession ? (
-            <button type="button" onClick={handleStopPhoneUpload}>
-              Stop phone upload
-            </button>
-          ) : (
-            <button type="button" onClick={handleStartPhoneUpload} disabled={startingPhoneUpload}>
-              {startingPhoneUpload ? 'Starting…' : 'Upload from phone'}
-            </button>
-          )}
-        </div>
 
         {phoneUploadSession && (
           <div className="phone-upload-panel">
@@ -669,13 +722,13 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
             <div className="phone-upload-info">
               <p>
                 On your phone, scan this code or open{' '}
-                <span className="mono-inline">{phoneUploadSession.url}</span> while it&apos;s on
-                the same wifi network (or tethered to this computer&apos;s hotspot).
+                <span className="mono-inline">{phoneUploadSession.url}</span> while it&apos;s on the
+                same wifi network (or tethered to this computer&apos;s hotspot).
               </p>
-              <p className="phone-upload-hint">
-                Photos you send there appear here automatically. Click &ldquo;Stop phone
-                upload&rdquo; above when you&apos;re done.
-              </p>
+              <p className="phone-upload-hint">Photos you send there appear here automatically.</p>
+              <button type="button" onClick={handleStopPhoneUpload}>
+                Stop phone upload
+              </button>
             </div>
           </div>
         )}

@@ -173,7 +173,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
       <h1>{trip.name}</h1>
 
       <div className="track-list-actions">
-        <div className="add-track-menu" ref={addMenuRef}>
+        <div className="dropdown-menu" ref={addMenuRef}>
           <button
             type="button"
             onClick={() => setShowAddMenu((v) => !v)}
@@ -182,7 +182,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
             {importing ? 'Importing…' : startingGpxUpload ? 'Starting…' : 'Add track ▾'}
           </button>
           {showAddMenu && (
-            <div className="add-track-menu-options">
+            <div className="dropdown-menu-options">
               <button
                 type="button"
                 onClick={() => {
