@@ -311,7 +311,7 @@ export class Repository {
 
   listTracksForTrip(tripId: number): Track[] {
     const rows = this.db
-      .prepare('SELECT * FROM tracks WHERE trip_id = ? ORDER BY date DESC, id DESC')
+      .prepare('SELECT * FROM tracks WHERE trip_id = ? ORDER BY date ASC, id ASC')
       .all(tripId) as TrackRow[]
     return rows.map(toTrack)
   }

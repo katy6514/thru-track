@@ -101,17 +101,17 @@ describe('Repository track import', () => {
     expect(track.name).toBe('2026-07-01')
   })
 
-  it('lists tracks for a trip, newest date first', () => {
-    repo.importGpxTrack(
-      tripId,
-      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-01T14:00:00Z' }] })
-    )
+  it('lists tracks for a trip, oldest date first', () => {
     repo.importGpxTrack(
       tripId,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-05T14:00:00Z' }] })
     )
+    repo.importGpxTrack(
+      tripId,
+      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-01T14:00:00Z' }] })
+    )
     const tracks = repo.listTracksForTrip(tripId)
-    expect(tracks.map((t) => t.date)).toEqual(['2026-07-05', '2026-07-01'])
+    expect(tracks.map((t) => t.date)).toEqual(['2026-07-01', '2026-07-05'])
   })
 
   it('does not list tracks belonging to a different trip', () => {
