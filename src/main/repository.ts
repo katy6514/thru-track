@@ -222,9 +222,9 @@ export class Repository {
   // inside its own single transaction, rather than duplicating the SQL or nesting
   // this.db.transaction calls (better-sqlite3 transactions aren't meant to nest).
   private deleteTrackInTransaction(id: number): { deletedPhotoFilepaths: string[] } {
-    const photoRows = this.db
-      .prepare('SELECT filepath FROM photos WHERE track_id = ?')
-      .all(id) as { filepath: string }[]
+    const photoRows = this.db.prepare('SELECT filepath FROM photos WHERE track_id = ?').all(id) as {
+      filepath: string
+    }[]
 
     this.db.prepare('DELETE FROM track_points WHERE track_id = ?').run(id)
     this.db.prepare('DELETE FROM entries WHERE track_id = ?').run(id)
@@ -247,9 +247,9 @@ export class Repository {
       const tripExists = this.db.prepare('SELECT 1 FROM trips WHERE id = ?').get(id)
       if (!tripExists) throw new Error(`Trip ${id} not found`)
 
-      const trackRows = this.db
-        .prepare('SELECT id FROM tracks WHERE trip_id = ?')
-        .all(id) as { id: number }[]
+      const trackRows = this.db.prepare('SELECT id FROM tracks WHERE trip_id = ?').all(id) as {
+        id: number
+      }[]
 
       const deletedPhotoFilepaths: string[] = []
       for (const track of trackRows) {
@@ -390,14 +390,15 @@ export class Repository {
     filepath: string,
     timestamp: string | null,
     lat: number | null,
-    lng: number | null
+    lng: number | null,
+    contentHash: string | null
   ): Photo {
     const now = new Date().toISOString()
     const info = this.db
       .prepare(
-        'INSERT INTO photos (track_id, filepath, timestamp, lat, lng, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO photos (track_id, filepath, timestamp, lat, lng, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(trackId, filepath, timestamp, lat, lng, now)
+      .run(trackId, filepath, timestamp, lat, lng, contentHash, now)
     return toPhoto(
       this.db.prepare('SELECT * FROM photos WHERE id = ?').get(info.lastInsertRowid) as PhotoRow
     )
@@ -406,6 +407,15 @@ export class Repository {
   getPhoto(id: number): Photo | null {
     const row = this.db.prepare('SELECT * FROM photos WHERE id = ?').get(id) as PhotoRow | undefined
     return row ? toPhoto(row) : null
+  }
+
+  // Used to skip re-importing a photo already stored for this track — scoped per track (not
+  // global) since the same photo genuinely belonging to two different tracks isn't a mistake.
+  photoContentHashExists(trackId: number, contentHash: string): boolean {
+    const row = this.db
+      .prepare('SELECT 1 FROM photos WHERE track_id = ? AND content_hash = ?')
+      .get(trackId, contentHash)
+    return row !== undefined
   }
 
   listPhotosForTrack(trackId: number): Photo[] {

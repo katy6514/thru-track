@@ -77,6 +77,7 @@ export interface PendingPhoto {
   exifTimestamp: string | null
   exifLat: number | null
   exifLng: number | null
+  contentHash: string
 }
 
 // Returned by `photos:import` instead of `Photo[]` when the track is timed AND at least one photo
@@ -89,6 +90,17 @@ export interface PhotoImportNeedsOffset {
   needsOffsetConfirm: true
   proposedOffsetMinutes: number
   pending: PendingPhoto[]
+  duplicatesSkipped: number
+}
+
+// A completed import (offset-confirm not needed, or already resolved via
+// `photos:importWithOffset`). `duplicatesSkipped` counts files that matched an existing photo's
+// content hash for this track and were silently not re-imported — surfaced to the hiker as a
+// small notice rather than left invisible, so "I picked 5 photos but only see 3 new ones" has an
+// answer.
+export interface PhotoImportResult {
+  photos: Photo[]
+  duplicatesSkipped: number
 }
 
 // A satellite check-in message imported from a device export (issue #11). Unlike a JournalNote,

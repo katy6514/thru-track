@@ -65,6 +65,9 @@ export function migrate(database: Database.Database): void {
     -- the track's points, and are both nullable for the same reason journal_notes.timestamp is
     -- nullable: no EXIF GPS AND a timeless track (no time axis to interpolate against) leaves no
     -- position available at all.
+    -- content_hash (SHA-256 of the file's bytes) is how a re-imported duplicate is recognized —
+    -- deliberately not timestamp-based, since two genuinely different photos taken in the same
+    -- second (a burst) are common and must both be kept.
     CREATE TABLE IF NOT EXISTS photos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       track_id INTEGER NOT NULL REFERENCES tracks(id),
@@ -72,10 +75,12 @@ export function migrate(database: Database.Database): void {
       timestamp TEXT,
       lat REAL,
       lng REAL,
+      content_hash TEXT,
       created_at TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_photos_track_id ON photos(track_id);
+    CREATE INDEX IF NOT EXISTS idx_photos_track_id_content_hash ON photos(track_id, content_hash);
 
     -- A satellite message imported from a device export (currently only Garmin inReach CSV
     -- exports, hence source = 'inreach' hardcoded at write time — the PRD's data model
@@ -100,6 +105,22 @@ export function migrate(database: Database.Database): void {
   `)
 
   migrateTrackPointsTimestampNullable(database)
+  migratePhotosContentHash(database)
+}
+
+// photos.content_hash was added after photos already existed in the wild — a plain ADD COLUMN
+// (unlike the track_points NOT NULL change above, this needs no rebuild/copy dance since SQLite
+// supports adding a nullable column in place). Existing photo rows get a NULL hash, which simply
+// never matches a newly-computed one, so pre-existing photos are just never considered when
+// checking a new import for duplicates — no backfill needed for correctness.
+function migratePhotosContentHash(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(photos)').all() as { name: string }[]
+  if (columns.some((c) => c.name === 'content_hash')) return
+
+  database.exec(`
+    ALTER TABLE photos ADD COLUMN content_hash TEXT;
+    CREATE INDEX IF NOT EXISTS idx_photos_track_id_content_hash ON photos(track_id, content_hash);
+  `)
 }
 
 // track_points.timestamp used to be NOT NULL, before timeless (CalTopo-retrace-style) tracks

@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { copyFile, mkdir, unlink } from 'fs/promises'
 import { extname, join } from 'path'
 import { app } from 'electron'
@@ -24,6 +24,13 @@ export async function storePhotoFile(sourcePath: string, trackId: number): Promi
   const destPath = join(dir, managedFilename)
   await copyFile(sourcePath, destPath)
   return destPath
+}
+
+// Identifies a photo by its actual bytes, not its filename or timestamp — two different photos
+// can legitimately share a timestamp (a burst shot), but never share a content hash, so this is
+// what duplicate-import detection is keyed on.
+export function hashPhotoContent(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex')
 }
 
 // Deletes a managed photo file from disk, as post-transaction cleanup after Repository's

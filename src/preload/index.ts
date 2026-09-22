@@ -10,6 +10,7 @@ import type {
   Photo,
   PendingPhoto,
   PhotoImportNeedsOffset,
+  PhotoImportResult,
   Message
 } from '../shared/types'
 
@@ -45,13 +46,13 @@ const api = {
   },
   photos: {
     list: (trackId: number): Promise<Photo[]> => ipcRenderer.invoke('photos:list', trackId),
-    import: (trackId: number): Promise<Photo[] | PhotoImportNeedsOffset> =>
+    import: (trackId: number): Promise<PhotoImportResult | PhotoImportNeedsOffset> =>
       ipcRenderer.invoke('photos:import', trackId),
     importWithOffset: (
       trackId: number,
       pending: PendingPhoto[],
       offsetMinutes: number
-    ): Promise<Photo[]> =>
+    ): Promise<PhotoImportResult> =>
       ipcRenderer.invoke('photos:importWithOffset', trackId, pending, offsetMinutes),
     getDataUri: (photoId: number): Promise<string> =>
       ipcRenderer.invoke('photos:getDataUri', photoId)
@@ -66,10 +67,12 @@ const api = {
       ipcRenderer.invoke('photoUpload:start', trackId),
     stop: (): Promise<void> => ipcRenderer.invoke('photoUpload:stop'),
     onBatchReceived: (
-      callback: (result: Photo[] | PhotoImportNeedsOffset) => void
+      callback: (result: PhotoImportResult | PhotoImportNeedsOffset) => void
     ): (() => void) => {
-      const listener = (_event: IpcRendererEvent, result: Photo[] | PhotoImportNeedsOffset): void =>
-        callback(result)
+      const listener = (
+        _event: IpcRendererEvent,
+        result: PhotoImportResult | PhotoImportNeedsOffset
+      ): void => callback(result)
       ipcRenderer.on('photoUpload:batchReceived', listener)
       return () => ipcRenderer.removeListener('photoUpload:batchReceived', listener)
     },

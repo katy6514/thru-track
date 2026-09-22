@@ -22,50 +22,39 @@ function roundToNearestHalfHourMinutes(diffMs: number): number {
 }
 
 /**
- * Detects the likely timezone offset between a track's own clock (its GPX start timestamp,
- * assumed correct/UTC-derived) and a batch of photos' EXIF clocks, which may have been set to
- * whatever timezone the camera/phone happened to be in (often not the hiker's current one, or
- * just never adjusted for DST).
+ * Detects the likely timezone offset between a track's own clock (its GPX timestamps, assumed
+ * correct/UTC-derived) and a batch of photos' EXIF clocks, which may have been set to whatever
+ * timezone the camera/phone happened to be in (often not the hiker's current one, or just never
+ * adjusted for DST).
  *
- * Aggregation strategy: rather than trusting a single representative photo (fragile — one photo
- * from a second camera with a stale or misconfigured clock would throw the whole batch off), each
- * photo's raw diff-from-track-start is independently rounded to the nearest 30 minutes, and the
- * *mode* (most common rounded value) across the batch is proposed. This is robust to a lone
- * outlier as long as most of the batch's cameras agree on the same real-world offset, which is
- * the overwhelmingly common case (one device took the whole batch). Ties are broken by the first
- * offset value encountered in `photoTimestamps`, making the result deterministic regardless of Map
- * iteration order.
+ * Comparison strategy: a photo taken partway through the day naturally has a timestamp hours
+ * after the track's *start* even with a perfectly correct clock — comparing each photo
+ * individually against `trackStartIso` would conflate "how far into the hike this photo was
+ * taken" with "how wrong the camera's clock is," which are unrelated quantities (this was a real
+ * bug: a photo taken 7 hours into a hike produced a spurious ~7-hour "correction" that then got
+ * applied to the whole batch, corrupting photos that never needed it). Since every photo in a
+ * batch shares one camera and therefore one constant clock error, the batch's own midpoint (the
+ * average of its earliest and latest timestamps) compared against the track's midpoint isolates
+ * that constant far more reliably than any single photo's raw diff from track start — it's
+ * unaffected by *when during the hike* photos happen to have been taken, only by the batch's
+ * overall position relative to the track in time.
  *
  * Any photo timestamp that fails to parse is silently skipped (defensive — callers are expected to
  * have already filtered to photos with a real EXIF timestamp). If none parse, proposes 0.
  */
 export function detectTimezoneOffset(
   trackStartIso: string,
+  trackEndIso: string,
   photoTimestamps: string[]
 ): OffsetDetectionResult {
-  const trackStartMs = Date.parse(trackStartIso)
-
-  const roundedOffsets = photoTimestamps
+  const photoMsValues = photoTimestamps
     .map((ts) => Date.parse(ts))
     .filter((ms) => !Number.isNaN(ms))
-    .map((photoMs) => roundToNearestHalfHourMinutes(photoMs - trackStartMs))
 
-  if (roundedOffsets.length === 0) return { offsetMinutes: 0 }
+  if (photoMsValues.length === 0) return { offsetMinutes: 0 }
 
-  const counts = new Map<number, number>()
-  for (const offset of roundedOffsets) {
-    counts.set(offset, (counts.get(offset) ?? 0) + 1)
-  }
+  const batchMidMs = (Math.min(...photoMsValues) + Math.max(...photoMsValues)) / 2
+  const trackMidMs = (Date.parse(trackStartIso) + Date.parse(trackEndIso)) / 2
 
-  let bestOffset = roundedOffsets[0]
-  let bestCount = 0
-  for (const offset of roundedOffsets) {
-    const count = counts.get(offset) as number
-    if (count > bestCount) {
-      bestCount = count
-      bestOffset = offset
-    }
-  }
-
-  return { offsetMinutes: bestOffset }
+  return { offsetMinutes: roundToNearestHalfHourMinutes(batchMidMs - trackMidMs) }
 }

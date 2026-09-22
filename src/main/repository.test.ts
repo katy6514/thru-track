@@ -365,7 +365,8 @@ describe('Repository photos', () => {
       '/managed/track-1-abc.jpg',
       '2026-07-01T14:00:30Z',
       46.85,
-      -121.75
+      -121.75,
+      'hash-abc'
     )
     expect(photo.trackId).toBe(trackId)
     expect(photo.filepath).toBe('/managed/track-1-abc.jpg')
@@ -378,15 +379,15 @@ describe('Repository photos', () => {
   })
 
   it('creates a photo with a null timestamp and null position (no EXIF GPS on a timeless track)', () => {
-    const photo = repo.createPhoto(trackId, '/managed/track-1-def.jpg', null, null, null)
+    const photo = repo.createPhoto(trackId, '/managed/track-1-def.jpg', null, null, null, null)
     expect(photo.timestamp).toBeNull()
     expect(photo.lat).toBeNull()
     expect(photo.lng).toBeNull()
   })
 
   it('lists photos for a track ordered by timestamp ascending', () => {
-    repo.createPhoto(trackId, '/managed/second.jpg', '2026-07-01T15:00:00Z', 1, 1)
-    repo.createPhoto(trackId, '/managed/first.jpg', '2026-07-01T14:00:00Z', 1, 1)
+    repo.createPhoto(trackId, '/managed/second.jpg', '2026-07-01T15:00:00Z', 1, 1, null)
+    repo.createPhoto(trackId, '/managed/first.jpg', '2026-07-01T14:00:00Z', 1, 1, null)
     const photos = repo.listPhotosForTrack(trackId)
     expect(photos.map((p) => p.filepath)).toEqual(['/managed/first.jpg', '/managed/second.jpg'])
   })
@@ -397,8 +398,8 @@ describe('Repository photos', () => {
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
     ).id
 
-    repo.createPhoto(trackId, '/managed/track-one.jpg', null, null, null)
-    repo.createPhoto(otherTrackId, '/managed/track-two.jpg', null, null, null)
+    repo.createPhoto(trackId, '/managed/track-one.jpg', null, null, null, null)
+    repo.createPhoto(otherTrackId, '/managed/track-two.jpg', null, null, null, null)
 
     expect(repo.listPhotosForTrack(trackId).map((p) => p.filepath)).toEqual([
       '/managed/track-one.jpg'
@@ -409,7 +410,7 @@ describe('Repository photos', () => {
   })
 
   it('gets a single photo by id', () => {
-    const created = repo.createPhoto(trackId, '/managed/one.jpg', null, null, null)
+    const created = repo.createPhoto(trackId, '/managed/one.jpg', null, null, null, null)
     expect(repo.getPhoto(created.id)).toEqual(created)
   })
 
@@ -418,7 +419,22 @@ describe('Repository photos', () => {
   })
 
   it('throws when creating a photo for a track that does not exist', () => {
-    expect(() => repo.createPhoto(999, '/managed/orphan.jpg', null, null, null)).toThrow()
+    expect(() => repo.createPhoto(999, '/managed/orphan.jpg', null, null, null, null)).toThrow()
+  })
+
+  it("recognizes a content hash already stored for the track, but not a track that doesn't have it", () => {
+    repo.createPhoto(trackId, '/managed/dup-source.jpg', null, null, null, 'hash-1')
+    expect(repo.photoContentHashExists(trackId, 'hash-1')).toBe(true)
+    expect(repo.photoContentHashExists(trackId, 'hash-2')).toBe(false)
+  })
+
+  it('scopes a content hash check to the track, not globally', () => {
+    const otherTrackId = repo.importGpxTrack(
+      repo.createTrip('Other Trip').id,
+      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
+    ).id
+    repo.createPhoto(otherTrackId, '/managed/elsewhere.jpg', null, null, null, 'hash-shared')
+    expect(repo.photoContentHashExists(trackId, 'hash-shared')).toBe(false)
   })
 })
 
@@ -529,8 +545,8 @@ describe('Repository cascade deletion', () => {
     const track = repo.importGpxTrack(tripId, sampleGpx({ name: `${label} track` }))
     repo.saveEntry(track.id, `${label} entry text`)
     repo.createNote(track.id, `${label} note`, '2026-07-01T14:00:30Z')
-    const photoA = repo.createPhoto(track.id, `/managed/${label}-a.jpg`, null, null, null)
-    const photoB = repo.createPhoto(track.id, `/managed/${label}-b.jpg`, null, 46.85, -121.75)
+    const photoA = repo.createPhoto(track.id, `/managed/${label}-a.jpg`, null, null, null, null)
+    const photoB = repo.createPhoto(track.id, `/managed/${label}-b.jpg`, null, 46.85, -121.75, null)
     repo.importInreachMessages(track.id, sampleInreachCsv())
     return { trackId: track.id, photoPaths: [photoA.filepath, photoB.filepath] }
   }

@@ -4,7 +4,7 @@ import { basename, extname } from 'path'
 import { getDb, pingDb } from './db'
 import { Repository, DateRequiredError } from './repository'
 import { extractExifData } from './exifExtractor'
-import { storePhotoFile, deletePhotoFile } from './fileStorageManager'
+import { storePhotoFile, deletePhotoFile, hashPhotoContent } from './fileStorageManager'
 import {
   startPhotoUploadServer,
   startGpxUploadServer,
@@ -20,6 +20,7 @@ import type {
   Photo,
   PendingPhoto,
   PhotoImportNeedsOffset,
+  PhotoImportResult,
   Message
 } from '../shared/types'
 
@@ -174,6 +175,8 @@ export function registerIpcHandlers(): void {
     pending: PendingPhoto[],
     offsetMinutes: number
   ): Promise<Photo[]> {
+    // `pending` arriving here is already duplicate-filtered (see buildPhotoImportResult) — this
+    // just does the copy/DB-insert work, so nothing further to check.
     const points = repository.getTrackPoints(trackId)
     const isTimed = points.length > 0 && points[0].timestamp !== null
     const offsetMs = offsetMinutes * 60 * 1000
@@ -204,7 +207,9 @@ export function registerIpcHandlers(): void {
       }
 
       const storedPath = await storePhotoFile(photo.filePath, trackId)
-      imported.push(repository.createPhoto(trackId, storedPath, adjustedTimestamp, lat, lng))
+      imported.push(
+        repository.createPhoto(trackId, storedPath, adjustedTimestamp, lat, lng, photo.contentHash)
+      )
     }
 
     return imported
@@ -218,25 +223,39 @@ export function registerIpcHandlers(): void {
   async function buildPhotoImportResult(
     trackId: number,
     filePaths: string[]
-  ): Promise<Photo[] | PhotoImportNeedsOffset> {
-    if (filePaths.length === 0) return []
+  ): Promise<PhotoImportResult | PhotoImportNeedsOffset> {
+    if (filePaths.length === 0) return { photos: [], duplicatesSkipped: 0 }
 
     // Fetched once up front rather than per-photo: every photo in this batch is imported against
     // the same track, so its points/timed-ness don't change mid-loop.
     const points = repository.getTrackPoints(trackId)
     const isTimed = points.length > 0 && points[0].timestamp !== null
 
-    // Extract EXIF for every file, but don't finalize (copy/DB-insert) anything yet — that only
-    // happens once any offset-confirmation step below has been resolved.
+    // Extract EXIF and hash every file, but don't finalize (copy/DB-insert) anything yet — that
+    // only happens once any offset-confirmation step below has been resolved. A file whose
+    // content hash matches a photo already stored for this track — or an earlier file in this
+    // same batch, e.g. the same photo picked twice — is dropped here rather than re-imported;
+    // `duplicatesSkipped` carries the count back so the hiker isn't left wondering why they
+    // picked 5 files but only got 3.
     const pending: PendingPhoto[] = []
+    const seenHashes = new Set<string>()
+    let duplicatesSkipped = 0
     for (const filePath of filePaths) {
       const buffer = await readFile(filePath)
+      const contentHash = hashPhotoContent(buffer)
+      if (seenHashes.has(contentHash) || repository.photoContentHashExists(trackId, contentHash)) {
+        duplicatesSkipped++
+        continue
+      }
+      seenHashes.add(contentHash)
+
       const exif = await extractExifData(buffer)
       pending.push({
         filePath,
         exifTimestamp: exif.timestamp,
         exifLat: exif.lat,
-        exifLng: exif.lng
+        exifLng: exif.lng,
+        contentHash
       })
     }
 
@@ -246,21 +265,22 @@ export function registerIpcHandlers(): void {
     // genuinely no comparison to make, so skip the confirmation prompt and import directly —
     // unchanged from the pre-issue-#10 behavior.
     const trackStart = isTimed ? (points[0].timestamp as string) : null
+    const trackEnd = isTimed ? (points[points.length - 1].timestamp as string) : null
     const photosWithTimestamp = pending
       .map((p) => p.exifTimestamp)
       .filter((ts): ts is string => ts !== null)
 
-    if (trackStart !== null && photosWithTimestamp.length > 0) {
-      const { offsetMinutes } = detectTimezoneOffset(trackStart, photosWithTimestamp)
-      return { needsOffsetConfirm: true, proposedOffsetMinutes: offsetMinutes, pending }
+    if (trackStart !== null && trackEnd !== null && photosWithTimestamp.length > 0) {
+      const { offsetMinutes } = detectTimezoneOffset(trackStart, trackEnd, photosWithTimestamp)
+      return { needsOffsetConfirm: true, proposedOffsetMinutes: offsetMinutes, pending, duplicatesSkipped }
     }
 
-    return finalizePhotoImport(trackId, pending, 0)
+    return { photos: await finalizePhotoImport(trackId, pending, 0), duplicatesSkipped }
   }
 
   ipcMain.handle(
     'photos:import',
-    async (event, trackId: number): Promise<Photo[] | PhotoImportNeedsOffset> => {
+    async (event, trackId: number): Promise<PhotoImportResult | PhotoImportNeedsOffset> => {
       const window = BrowserWindow.fromWebContents(event.sender)
       if (!window) throw new Error('No window found for the requesting renderer')
       const result = await dialog.showOpenDialog(window, {
@@ -268,15 +288,24 @@ export function registerIpcHandlers(): void {
         properties: ['openFile', 'multiSelections'],
         filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'heic', 'heif'] }]
       })
-      if (result.canceled || result.filePaths.length === 0) return []
+      if (result.canceled || result.filePaths.length === 0) return { photos: [], duplicatesSkipped: 0 }
       return buildPhotoImportResult(trackId, result.filePaths)
     }
   )
 
   ipcMain.handle(
     'photos:importWithOffset',
-    (_event, trackId: number, pending: PendingPhoto[], offsetMinutes: number): Promise<Photo[]> =>
-      finalizePhotoImport(trackId, pending, offsetMinutes)
+    async (
+      _event,
+      trackId: number,
+      pending: PendingPhoto[],
+      offsetMinutes: number
+    ): Promise<PhotoImportResult> => ({
+      // The batch reaching here was already duplicate-filtered when it was first built (see
+      // buildPhotoImportResult) — nothing further can have become a duplicate in the meantime.
+      photos: await finalizePhotoImport(trackId, pending, offsetMinutes),
+      duplicatesSkipped: 0
+    })
   )
 
   // A phone on the same wifi/hotspot uploads straight to a short-lived local HTTP server (see

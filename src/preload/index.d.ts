@@ -9,6 +9,7 @@ import type {
   Photo,
   PendingPhoto,
   PhotoImportNeedsOffset,
+  PhotoImportResult,
   Message
 } from '../shared/types'
 
@@ -37,12 +38,12 @@ interface Api {
   }
   photos: {
     list: (trackId: number) => Promise<Photo[]>
-    import: (trackId: number) => Promise<Photo[] | PhotoImportNeedsOffset>
+    import: (trackId: number) => Promise<PhotoImportResult | PhotoImportNeedsOffset>
     importWithOffset: (
       trackId: number,
       pending: PendingPhoto[],
       offsetMinutes: number
-    ) => Promise<Photo[]>
+    ) => Promise<PhotoImportResult>
     getDataUri: (photoId: number) => Promise<string>
   }
   messages: {
@@ -52,7 +53,9 @@ interface Api {
   photoUpload: {
     start: (trackId: number) => Promise<{ url: string; qrDataUri: string }>
     stop: () => Promise<void>
-    onBatchReceived: (callback: (result: Photo[] | PhotoImportNeedsOffset) => void) => () => void
+    onBatchReceived: (
+      callback: (result: PhotoImportResult | PhotoImportNeedsOffset) => void
+    ) => () => void
     onBatchError: (callback: (message: string) => void) => () => void
   }
   gpxUpload: {
