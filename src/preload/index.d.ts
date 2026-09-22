@@ -55,6 +55,12 @@ interface Api {
     onBatchReceived: (callback: (result: Photo[] | PhotoImportNeedsOffset) => void) => () => void
     onBatchError: (callback: (message: string) => void) => () => void
   }
+  gpxUpload: {
+    start: (tripId: number) => Promise<{ url: string; qrDataUri: string }>
+    stop: () => Promise<void>
+    onReceived: (callback: (result: Track | GpxImportNeedsDate) => void) => () => void
+    onError: (callback: (message: string) => void) => () => void
+  }
 }
 
 declare global {

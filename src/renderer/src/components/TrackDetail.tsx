@@ -58,7 +58,21 @@ function renderTrackMap(
   container: HTMLDivElement,
   points: TrackPoint[]
 ): { map: L.Map; marker: L.Marker | null; messageLayer: L.LayerGroup } {
-  const map = L.map(container)
+  // Scroll-wheel zoom starts disabled so a hiker scrolling the page past the map doesn't get
+  // hijacked into zooming it instead — it only activates once they click into the map, and
+  // deactivates again the moment the cursor leaves, so the rest of the page always scrolls
+  // normally. The hint label makes the click-to-activate behavior discoverable.
+  const map = L.map(container, { scrollWheelZoom: false })
+  const zoomHint = L.DomUtil.create('div', 'track-map-zoom-hint', container)
+  zoomHint.textContent = 'Click to zoom'
+  container.addEventListener('click', () => {
+    map.scrollWheelZoom.enable()
+    zoomHint.classList.add('track-map-zoom-hint-hidden')
+  })
+  container.addEventListener('mouseleave', () => {
+    map.scrollWheelZoom.disable()
+    zoomHint.classList.remove('track-map-zoom-hint-hidden')
+  })
 
   // A satellite message always carries its own GPS position (unlike a photo or a journal note),
   // so its map markers are populated by a separate effect keyed on the `messages` state — this

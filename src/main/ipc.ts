@@ -5,7 +5,11 @@ import { getDb, pingDb } from './db'
 import { Repository, DateRequiredError } from './repository'
 import { extractExifData } from './exifExtractor'
 import { storePhotoFile, deletePhotoFile } from './fileStorageManager'
-import { startPhotoUploadServer, type StartedUploadServer } from './photoUploadServer'
+import {
+  startPhotoUploadServer,
+  startGpxUploadServer,
+  type StartedUploadServer
+} from './photoUploadServer'
 import { interpolatePosition } from '../shared/positionInterpolator'
 import { detectTimezoneOffset } from '../shared/timezoneOffsetDetector'
 import type {
@@ -89,6 +93,53 @@ export function registerIpcHandlers(): void {
     (_event, tripId: number, gpxRaw: string, date: string): Track =>
       repository.importGpxTrack(tripId, gpxRaw, { date })
   )
+
+  // A phone on the same wifi/hotspot sends its exported GPX file straight to a short-lived local
+  // HTTP server (see photoUploadServer.ts / issue #34), the same mechanism as the phone photo
+  // uploader but its own separate session/QR code rather than one flow that accepts both file
+  // types — scanning it is a distinct choice from "upload photos", and the two upload pages ask
+  // for different things. Only one session runs at a time, scoped to whichever trip it was
+  // started from.
+  let activeGpxUploadServer: StartedUploadServer | null = null
+
+  ipcMain.handle(
+    'gpxUpload:start',
+    async (event, tripId: number): Promise<{ url: string; qrDataUri: string }> => {
+      activeGpxUploadServer?.stop()
+      const window = BrowserWindow.fromWebContents(event.sender)
+      const server = await startGpxUploadServer((files) => {
+        const file = files[0]
+        if (!file) return
+        readFile(file.filePath, 'utf-8')
+          .then((gpxRaw) => {
+            try {
+              const track = repository.importGpxTrack(tripId, gpxRaw, {
+                filename: file.originalName
+              })
+              window?.webContents.send('gpxUpload:received', track)
+            } catch (err) {
+              // Same fallback as the file-picker path above: no usable date, so hand the parsed
+              // GPX back to the renderer to prompt for one and resubmit via importGpxWithDate.
+              if (err instanceof DateRequiredError) {
+                window?.webContents.send('gpxUpload:received', { needsDate: true, gpxRaw })
+              } else {
+                throw err
+              }
+            }
+          })
+          .catch((err) => {
+            window?.webContents.send('gpxUpload:error', String(err))
+          })
+      })
+      activeGpxUploadServer = server
+      return { url: server.url, qrDataUri: server.qrDataUri }
+    }
+  )
+
+  ipcMain.handle('gpxUpload:stop', (): void => {
+    activeGpxUploadServer?.stop()
+    activeGpxUploadServer = null
+  })
 
   ipcMain.handle('tracks:getPoints', (_event, trackId: number): TrackPoint[] =>
     repository.getTrackPoints(trackId)
