@@ -89,6 +89,12 @@ button:hover {
   color: var(--ev-c-text-2);
 }
 
+.duplicates-notice {
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
 .trips {
   display: flex;
   flex-direction: column;
@@ -407,28 +413,6 @@ button:hover {
   margin-top: 16px;
 }
 
-/* Zoom/pan controls sit above the slider as a compact toolbar rather than full-size action
-   buttons — they're pressed repeatedly while dialing in a cluster, so a smaller footprint reads
-   better than the larger buttons used for one-off actions like "Import photos". */
-.timeline-controls {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.timeline-control-button {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.timeline-window-range {
-  margin-left: 8px;
-  color: var(--ev-c-text-2);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 .timeline-track {
   position: relative;
 }
@@ -494,6 +478,43 @@ button:hover {
   background-color: var(--accent-message-hover);
 }
 
+/* Two or more items too close together in time to render as separate dots (see
+   clusterTimelineItems.ts) collapse into one badge showing the count — same footprint/position
+   as a plain marker, but a small dropdown-menu itself, so clicking it opens a picker (below)
+   instead of selecting an item directly. */
+.timeline-marker-cluster-wrap {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+.timeline-marker-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 2px solid var(--color-background);
+  border-radius: 50%;
+  background-color: var(--accent-note);
+  color: var(--ev-c-white);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.timeline-marker-cluster:hover {
+  background-color: var(--accent-note-hover);
+}
+
+.timeline-cluster-options button {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .timeline-status {
   display: flex;
   justify-content: space-between;
@@ -505,12 +526,6 @@ button:hover {
 
 .timeline-gap-notice {
   color: var(--accent-danger);
-}
-
-/* Same muted-secondary treatment as the rest of .timeline-status — this is informational, not an
-   error, unlike .timeline-gap-notice above. */
-.timeline-hidden-notice {
-  color: var(--ev-c-text-2);
 }
 
 .note-form {

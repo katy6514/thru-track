@@ -210,13 +210,12 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             — a guessed position would be more misleading than an honest blank.
           </p>
         </div>
-        <h3>Zooming in on a cluster</h3>
+        <h3>Clustered items</h3>
         <p>
-          A few photos taken two minutes apart at a viewpoint can land on top of each other on a
-          full-day timeline — nothing to click individually. Use the <strong>Zoom in</strong> /{' '}
-          <strong>Zoom out</strong> buttons (and <strong>&#9664;</strong> / <strong>&#9654;</strong>{' '}
-          to pan) above the slider to narrow the view down to just that stretch. The same items
-          spread out proportionally and become separately clickable.
+          A few photos taken two minutes apart at a viewpoint would otherwise land on top of each
+          other on a full-day timeline — nothing to click individually. When items are that close
+          together, they combine into one numbered badge instead. Click it to pick which one you
+          meant from a short list.
         </p>
         <h3>Timeless days</h3>
         <p>
@@ -491,8 +490,8 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
                 <td>Yes</td>
               </tr>
               <tr>
-                <td>Zoom / pan</td>
-                <td>Buttons above the timeline slider</td>
+                <td>Clustered items</td>
+                <td>Click the numbered badge on the timeline</td>
                 <td>&mdash;</td>
                 <td>Yes</td>
               </tr>
