@@ -330,6 +330,24 @@ button:hover {
   overflow: hidden;
 }
 
+.track-map-zoom-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1000;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.track-map-zoom-hint-hidden {
+  opacity: 0;
+}
+
 .track-detail-actions {
   display: flex;
   gap: 8px;
