@@ -55,6 +55,20 @@ interface TrackDetailProps {
   onWriteJournal: () => void
 }
 
+// The photo overlay (see below) covers the right half of the map, so centering the map on a
+// photo's marker the normal way would land it right at the overlay's edge — this shifts the
+// map's projected center point right by a quarter of the container width first, which puts the
+// marker at the horizontal center of the remaining visible (left) half instead.
+const PHOTO_OVERLAY_CENTER_SHIFT = 0.25
+
+function centerMapOnPhotoMarker(map: L.Map, latlng: L.LatLngExpression): void {
+  const size = map.getSize()
+  const zoom = map.getZoom()
+  const markerPoint = map.project(latlng, zoom)
+  const targetPoint = markerPoint.add(L.point(size.x * PHOTO_OVERLAY_CENTER_SHIFT, 0))
+  map.panTo(map.unproject(targetPoint, zoom), { animate: true })
+}
+
 function renderTrackMap(
   container: HTMLDivElement,
   points: TrackPoint[]
@@ -247,8 +261,12 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
-  const photoMarkersRef = useRef<L.Marker[]>([])
+  const photoMarkersRef = useRef<Map<number, L.Marker>>(new Map())
   const messageLayerRef = useRef<L.LayerGroup | null>(null)
+  // Wherever the map was centered before the photo overlay shifted it to keep a marker visible
+  // in the left half — restored once the overlay closes, rather than leaving the map permanently
+  // offset. Null whenever the overlay isn't open.
+  const preOverlayCenterRef = useRef<L.LatLng | null>(null)
   const [error, setError] = useState('')
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
@@ -389,7 +407,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
           mapRef.current.remove()
           mapRef.current = null
         }
-        photoMarkersRef.current = []
+        photoMarkersRef.current = new Map()
         const { map, marker, messageLayer } = renderTrackMap(mapContainerRef.current, fetchedPoints)
         mapRef.current = map
         markerRef.current = marker
@@ -414,7 +432,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         mapRef.current = null
       }
       markerRef.current = null
-      photoMarkersRef.current = []
+      photoMarkersRef.current = new Map()
       messageLayerRef.current = null
     }
   }, [track.id])
@@ -455,14 +473,14 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     const map = mapRef.current
     if (!map) return
 
-    for (const existing of photoMarkersRef.current) existing.remove()
-    photoMarkersRef.current = []
+    for (const existing of photoMarkersRef.current.values()) existing.remove()
+    photoMarkersRef.current = new Map()
 
     for (const photo of photos) {
       if (photo.lat === null || photo.lng === null) continue
       const marker = L.marker([photo.lat, photo.lng], { icon: photoIcon }).addTo(map)
       marker.on('click', () => setSelectedItem({ kind: 'photo', id: photo.id }))
-      photoMarkersRef.current.push(marker)
+      photoMarkersRef.current.set(photo.id, marker)
     }
   }, [photos])
 
@@ -660,6 +678,31 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       cancelled = true
     }
   }, [selectedPhoto])
+
+  // The photo overlay covers the right half of the map — pan so the photo's own green marker
+  // stays centered in the remaining visible (left) half instead of sitting under the overlay or
+  // off-center. Reverts to wherever the map was centered before the overlay opened once it closes
+  // (or the selection moves to a note/message instead, which use the plain side panel). Also rings
+  // the open photo's own marker (and only that one) so it doesn't get lost among nearby dots once
+  // the map pans around it — re-applied here (rather than a separate effect) so it survives the
+  // marker elements being torn down and rebuilt whenever `photos` changes underneath a selection.
+  useEffect(() => {
+    for (const [id, marker] of photoMarkersRef.current) {
+      marker.getElement()?.classList.toggle('photo-map-marker-selected', id === selectedPhoto?.id)
+    }
+
+    const map = mapRef.current
+    if (!map) return
+    if (selectedPhoto && selectedPhoto.lat !== null && selectedPhoto.lng !== null) {
+      if (preOverlayCenterRef.current === null) {
+        preOverlayCenterRef.current = map.getCenter()
+      }
+      centerMapOnPhotoMarker(map, [selectedPhoto.lat, selectedPhoto.lng])
+    } else if (preOverlayCenterRef.current !== null) {
+      map.panTo(preOverlayCenterRef.current, { animate: true })
+      preOverlayCenterRef.current = null
+    }
+  }, [selectedPhoto, photos])
 
   // A photo only earns a timeline marker when the track itself is timed (there's a time axis to
   // place it on) AND the photo has its own EXIF timestamp. Everything else — every photo on a
@@ -889,7 +932,29 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
           <p className="empty">This track has no GPS points to show on the map.</p>
         )}
 
-        <div className="track-map" ref={mapContainerRef} />
+        <div className="track-map-wrapper">
+          <div className="track-map" ref={mapContainerRef} />
+          {selectedPhoto && (
+            <div className="photo-map-overlay">
+              <div className="photo-map-overlay-header">
+                <h2>{formatPhotoTitle(selectedPhoto)}</h2>
+                <button
+                  type="button"
+                  className="side-panel-close"
+                  onClick={() => setSelectedItem(null)}
+                  aria-label="Close photo"
+                >
+                  &times;
+                </button>
+              </div>
+              {photoDataLoading && <p className="empty">Loading photo…</p>}
+              {photoDataError && <p className="error">{photoDataError}</p>}
+              {!photoDataLoading && photoDataUri && (
+                <img className="photo-map-overlay-photo" src={photoDataUri} alt="" />
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="journal-preview">
           <div className="journal-preview-header">
@@ -1124,16 +1189,6 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       {selectedNote && (
         <SidePanel title={formatNoteTitle(selectedNote)} onClose={() => setSelectedItem(null)}>
           <p>{selectedNote.content}</p>
-        </SidePanel>
-      )}
-
-      {selectedPhoto && (
-        <SidePanel title={formatPhotoTitle(selectedPhoto)} onClose={() => setSelectedItem(null)}>
-          {photoDataLoading && <p className="empty">Loading photo…</p>}
-          {photoDataError && <p className="error">{photoDataError}</p>}
-          {!photoDataLoading && photoDataUri && (
-            <img className="side-panel-photo" src={photoDataUri} alt="" />
-          )}
         </SidePanel>
       )}
 

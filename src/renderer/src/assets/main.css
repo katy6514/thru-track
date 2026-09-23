@@ -415,11 +415,57 @@ button:hover {
   font-weight: 600;
 }
 
+/* Positions the photo overlay (below) relative to the map instead of the page, so it covers
+   exactly the map's own right half regardless of where the map sits on the page. */
+.track-map-wrapper {
+  position: relative;
+}
+
 .track-map {
   width: 100%;
   height: 500px;
   border-radius: 8px;
   overflow: hidden;
+}
+
+/* Shown over the right half of the map (instead of the shared .side-panel column) when a photo
+   is selected, so the map stays full width and visible rather than shrinking to make room. The
+   map itself pans underneath so the photo's own green marker stays centered in the remaining
+   visible left half — see centerMapOnPhotoMarker in TrackDetail.tsx. Above Leaflet's own controls
+   (z-index 1000) but below the dropdown-menu/tooltip layers, which never appear at the same time
+   as this overlay. */
+.photo-map-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-background-soft);
+  border-left: 1px solid var(--ev-c-gray-2);
+  border-radius: 0 8px 8px 0;
+  padding: 16px;
+  overflow-y: auto;
+  z-index: 1050;
+}
+
+.photo-map-overlay-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.photo-map-overlay-header h2 {
+  font-size: 16px;
+}
+
+.photo-map-overlay-photo {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
 }
 
 .track-map-zoom-hint {
@@ -773,6 +819,32 @@ button:hover {
   border: 2px solid var(--color-background);
   background-color: #4ade80;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+/* Rings the marker for whichever photo is currently open in the overlay — applied via the
+   `.photo-map-marker-selected` class Leaflet's wrapping icon element gets toggled in
+   TrackDetail.tsx, not a :hover state, since the marker is often out of reach under the overlay
+   or off to the side once the map pans around it. */
+@keyframes photo-marker-pulse {
+  0% {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 0 0 0 rgba(255, 255, 255, 0.95);
+  }
+  70% {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 0 0 12px rgba(255, 255, 255, 0);
+  }
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+
+.photo-map-marker-selected .photo-map-marker-dot {
+  animation: photo-marker-pulse 1.6s ease-out infinite;
 }
 
 .message-list {
