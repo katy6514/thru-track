@@ -240,13 +240,17 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             <strong>Jump to journal entry</strong> to get there in one click. The map, photos, and
             timeline all stay right above it while you write.
           </li>
-          <li>Type. Plain text only — no formatting to fuss with.</li>
           <li>
-            That&rsquo;s it. It saves itself a moment after you stop typing; a small status line
-            next to the heading says <span className="mono-inline">Saved</span>,{' '}
+            Click <strong>Write journal entry</strong> (or <strong>Edit</strong>, once there&rsquo;s
+            already text) to turn it into a text box. Plain text only — no formatting to fuss with.
+          </li>
+          <li>
+            It saves itself a moment after you stop typing; a small status line next to{' '}
+            <strong>Done</strong> says <span className="mono-inline">Saved</span>,{' '}
             <span className="mono-inline">Saving&hellip;</span>, or{' '}
             <span className="mono-inline">Unsaved changes&hellip;</span> so you always know where
-            you stand.
+            you stand. Click <strong>Done</strong> when you&rsquo;re finished — it flushes anything
+            unsaved right away and switches back to plain text.
           </li>
         </ol>
         <p>

@@ -145,6 +145,16 @@ function formatClockTime(ms: number): string {
   return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+// Splits a journal entry's plain text into paragraphs (on blank lines) for read-only display as
+// actual <p> elements — a single pre-wrapped block would keep the hiker's line breaks but reads
+// as one big slab of text rather than the paragraphs they actually wrote.
+function journalParagraphs(text: string): string[] {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph !== '')
+}
+
 const TIMELINE_ITEM_KIND_LABEL: Record<TimelineItem['kind'], string> = {
   note: 'Note',
   photo: 'Photo',
@@ -247,10 +257,15 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
     'loading' | 'saved' | 'unsaved' | 'saving' | 'error'
   >('loading')
   const [journalError, setJournalError] = useState('')
+  // Read-only paragraphs by default, switching to the editable textarea once the hiker clicks
+  // Edit — an always-visible textarea read as too "form-like" for text that's meant to be read
+  // back later, like a diary entry.
+  const [journalEditing, setJournalEditing] = useState(false)
   const journalTextRef = useRef('')
   const journalSavedTextRef = useRef('')
   const journalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const journalTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const journalPreviewRef = useRef<HTMLDivElement>(null)
 
   const [notes, setNotes] = useState<JournalNote[]>([])
   const [noteContent, setNoteContent] = useState('')
@@ -325,6 +340,7 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
     setJournalText('')
     setJournalStatus('loading')
     setJournalError('')
+    setJournalEditing(false)
     journalTextRef.current = ''
     journalSavedTextRef.current = ''
     if (journalTimeoutRef.current) {
@@ -488,6 +504,19 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
     applyScrub(Number(e.target.value))
   }
 
+  const saveJournal = async (value: string): Promise<void> => {
+    setJournalStatus('saving')
+    setJournalError('')
+    try {
+      await window.api.entries.save(track.id, value)
+      journalSavedTextRef.current = value
+      setJournalStatus('saved')
+    } catch (err) {
+      setJournalError(cleanErrorMessage(err))
+      setJournalStatus('error')
+    }
+  }
+
   const handleJournalChange = (e: ChangeEvent<HTMLTextAreaElement>): void => {
     const value = e.target.value
     setJournalText(value)
@@ -496,20 +525,34 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
 
     if (journalTimeoutRef.current) clearTimeout(journalTimeoutRef.current)
     journalTimeoutRef.current = setTimeout(() => {
-      void (async (): Promise<void> => {
-        setJournalStatus('saving')
-        setJournalError('')
-        try {
-          await window.api.entries.save(track.id, value)
-          journalSavedTextRef.current = value
-          setJournalStatus('saved')
-        } catch (err) {
-          setJournalError(cleanErrorMessage(err))
-          setJournalStatus('error')
-        }
-      })()
+      void saveJournal(value)
     }, AUTOSAVE_DELAY_MS)
   }
+
+  const handleStartEditingJournal = (): void => {
+    setJournalEditing(true)
+  }
+
+  // Leaving edit mode flushes any pending debounced save immediately rather than leaving it to
+  // fire on its own timer — otherwise the preview below could briefly show stale text (or the
+  // status could still read "Unsaved changes…") right after switching back to it.
+  const handleDoneEditingJournal = (): void => {
+    setJournalEditing(false)
+    if (journalTimeoutRef.current) {
+      clearTimeout(journalTimeoutRef.current)
+      journalTimeoutRef.current = null
+    }
+    if (journalTextRef.current !== journalSavedTextRef.current) {
+      void saveJournal(journalTextRef.current)
+    }
+  }
+
+  // The textarea only exists in the DOM once editing starts, so it can't be focused until after
+  // that render — this fires right after, rather than trying to focus it inline in the click
+  // handler that flips journalEditing to true.
+  useEffect(() => {
+    if (journalEditing) journalTextareaRef.current?.focus()
+  }, [journalEditing])
 
   const handleAddNote = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -789,11 +832,11 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
                   type="button"
                   onClick={() => {
                     setShowAddDataMenu(false)
-                    journalTextareaRef.current?.scrollIntoView({
+                    journalPreviewRef.current?.scrollIntoView({
                       behavior: 'smooth',
                       block: 'center'
                     })
-                    journalTextareaRef.current?.focus()
+                    handleStartEditingJournal()
                   }}
                 >
                   Jump to journal entry
@@ -954,25 +997,48 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
           )}
         </div>
 
-        <div className="journal-preview">
+        <div className="journal-preview" ref={journalPreviewRef}>
           <div className="journal-preview-header">
             <h2>Journal entry</h2>
-            <span className={`journal-status journal-status-${journalStatus}`}>
-              {journalStatus === 'loading' && 'Loading…'}
-              {journalStatus === 'unsaved' && 'Unsaved changes…'}
-              {journalStatus === 'saving' && 'Saving…'}
-              {journalStatus === 'saved' && 'Saved'}
-              {journalStatus === 'error' && `Couldn't save: ${journalError}`}
-            </span>
+            {journalEditing ? (
+              <div className="journal-preview-header-actions">
+                <span className={`journal-status journal-status-${journalStatus}`}>
+                  {journalStatus === 'unsaved' && 'Unsaved changes…'}
+                  {journalStatus === 'saving' && 'Saving…'}
+                  {journalStatus === 'saved' && 'Saved'}
+                  {journalStatus === 'error' && `Couldn't save: ${journalError}`}
+                </span>
+                <button type="button" onClick={handleDoneEditingJournal}>
+                  Done
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStartEditingJournal}
+                disabled={journalStatus === 'loading'}
+              >
+                {journalText.trim() === '' ? 'Write journal entry' : 'Edit'}
+              </button>
+            )}
           </div>
-          <textarea
-            ref={journalTextareaRef}
-            className="journal-textarea"
-            value={journalText}
-            onChange={handleJournalChange}
-            disabled={journalStatus === 'loading'}
-            placeholder="Write about this day on the trail…"
-          />
+          {journalEditing ? (
+            <textarea
+              ref={journalTextareaRef}
+              className="journal-textarea"
+              value={journalText}
+              onChange={handleJournalChange}
+              placeholder="Write about this day on the trail…"
+            />
+          ) : journalText.trim() === '' ? (
+            <p className="journal-preview-empty">No journal entry written for this day yet.</p>
+          ) : (
+            journalParagraphs(journalText).map((paragraph, index) => (
+              <p key={index} className="journal-preview-text">
+                {paragraph}
+              </p>
+            ))
+          )}
         </div>
 
         {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (

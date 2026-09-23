@@ -535,10 +535,34 @@ button:hover {
   font-size: 16px;
 }
 
+.journal-preview-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* Overrides .journal-status's own top margin below, since here it sits inline in the header next
    to the heading instead of below the textarea. */
 .journal-preview-header .journal-status {
   margin-top: 0;
+}
+
+.journal-preview-text {
+  margin: 0 0 12px;
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.journal-preview-text:last-child {
+  margin-bottom: 0;
+}
+
+.journal-preview-empty {
+  margin: 0;
+  color: var(--ev-c-text-2);
+  font-size: 14px;
 }
 
 .timeline {
