@@ -147,9 +147,28 @@ button:hover {
 }
 
 .track-list {
-  max-width: 640px;
+  max-width: 1240px;
   width: 100%;
   margin: 0 auto;
+}
+
+/* Flex row so the overview map and the track list sit side by side — map on the left at 2/3
+   width, the list of tracks to its right at 1/3, so you can click through days while the map
+   stays in view rather than having to scroll back up to it. */
+.track-list-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.track-list-map-col {
+  flex: 0 0 calc(66.667% - 12px);
+  min-width: 0;
+}
+
+.track-list-side-col {
+  flex: 0 0 calc(33.333% - 12px);
+  min-width: 0;
 }
 
 .track-list h1 {
@@ -316,6 +335,15 @@ button:hover {
   border-radius: 8px;
 }
 
+/* Matches the color of this track's own line on the overview map above (see trackColor in
+   mapBaseLayers.ts), so a track reads as the same thing in both places. */
+.track-color-swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
 .track-name {
   flex: 1;
   font-family: var(--font-display);
@@ -342,12 +370,6 @@ button:hover {
   font-size: 13px;
 }
 
-.journal-editor {
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-}
-
 /* Flex row so the side panel appears as its own column next to the map/timeline, rather than
    covering them — the side panel is only rendered when an item (e.g. a note) is selected. */
 .track-detail-layout {
@@ -364,18 +386,16 @@ button:hover {
   min-width: 0;
 }
 
-.track-detail h1,
-.journal-editor h1 {
+.track-detail h1 {
   font-size: 28px;
   margin: 8px 0 24px;
 }
 
-/* The date subheading under the title on the track detail and journal editor pages reads as a
-   real heading (h2/h3-scale), not the small inline caption .track-date is elsewhere (e.g. next
-   to a track's name in TrackList's row listing) — scoped to these two pages rather than changed
-   on .track-date itself so that other usage is untouched. */
-.track-detail .track-date,
-.journal-editor .track-date {
+/* The date subheading under the title on the track detail page reads as a real heading
+   (h2/h3-scale), not the small inline caption .track-date is elsewhere (e.g. next to a track's
+   name in TrackList's row listing) — scoped to .track-detail rather than changed on .track-date
+   itself so that other usage is untouched. */
+.track-detail .track-date {
   margin-bottom: 24px;
   color: var(--ev-c-text-2);
   font-size: 20px;
@@ -508,24 +528,17 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  margin-bottom: 12px;
 }
 
 .journal-preview-header h2 {
   font-size: 16px;
 }
 
-.journal-preview-text {
-  margin: 12px 0 0;
-  color: var(--color-text);
-  font-size: 14px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.journal-preview-empty {
-  margin: 12px 0 0;
-  color: var(--ev-c-text-2);
-  font-size: 14px;
+/* Overrides .journal-status's own top margin below, since here it sits inline in the header next
+   to the heading instead of below the textarea. */
+.journal-preview-header .journal-status {
+  margin-top: 0;
 }
 
 .timeline {

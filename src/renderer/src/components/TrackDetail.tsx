@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -7,7 +7,6 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import type {
   Track,
   TrackPoint,
-  Entry,
   JournalNote,
   Photo,
   PendingPhoto,
@@ -17,6 +16,7 @@ import type {
 } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { formatTrackDate } from '../formatTrackDate'
+import { addBaseLayers, attachClickToZoom } from '../mapBaseLayers'
 import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
 import { interpolatePosition } from '../../../shared/positionInterpolator'
 import { computeTrackStats } from '../../../shared/trackStats'
@@ -52,8 +52,15 @@ const photoIcon = L.divIcon({
 interface TrackDetailProps {
   track: Track
   onBack: () => void
-  onWriteJournal: () => void
 }
+
+// Debounce autosave: save AUTOSAVE_DELAY_MS after the hiker stops typing, rather than requiring
+// an explicit "Save" click. Journal entries are written trailside on unreliable devices/batteries
+// where a hiker may close the app mid-thought — autosave means there's no "did I remember to
+// save?" step, and a keystroke is never at risk of being lost to a forgotten click. Backed up by
+// a best-effort flush if they navigate to another track before that fires (see the journal
+// cleanup below) so edits aren't stranded in the debounce window either.
+const AUTOSAVE_DELAY_MS = 800
 
 // The photo overlay (see below) covers the right half of the map, so centering the map on a
 // photo's marker the normal way would land it right at the overlay's edge — this shifts the
@@ -73,21 +80,8 @@ function renderTrackMap(
   container: HTMLDivElement,
   points: TrackPoint[]
 ): { map: L.Map; marker: L.Marker | null; messageLayer: L.LayerGroup } {
-  // Scroll-wheel zoom starts disabled so a hiker scrolling the page past the map doesn't get
-  // hijacked into zooming it instead — it only activates once they click into the map, and
-  // deactivates again the moment the cursor leaves, so the rest of the page always scrolls
-  // normally. The hint label makes the click-to-activate behavior discoverable.
   const map = L.map(container, { scrollWheelZoom: false })
-  const zoomHint = L.DomUtil.create('div', 'track-map-zoom-hint', container)
-  zoomHint.textContent = 'Click to zoom'
-  container.addEventListener('click', () => {
-    map.scrollWheelZoom.enable()
-    zoomHint.classList.add('track-map-zoom-hint-hidden')
-  })
-  container.addEventListener('mouseleave', () => {
-    map.scrollWheelZoom.disable()
-    zoomHint.classList.remove('track-map-zoom-hint-hidden')
-  })
+  attachClickToZoom(map, container)
 
   // A satellite message always carries its own GPS position (unlike a photo or a journal note),
   // so its map markers are populated by a separate effect keyed on the `messages` state — this
@@ -95,50 +89,7 @@ function renderTrackMap(
   // itself is timed.
   const messageLayer = L.layerGroup().addTo(map)
 
-  // Four free, no-signup basemaps a hiker can switch between via the layer control below — see
-  // issue #36 for the full evaluation notes (attribution requirements, rate limits, what would
-  // need to change if this app gets wide distribution). CartoDB's Positron/Dark Matter tiles were
-  // also considered but now require a free API key (their old no-key endpoint is deprecated), so
-  // they're left out of this no-signup set for now.
-  const baseLayers: Record<string, L.TileLayer> = {
-    // Renders contour lines and hillshading from SRTM elevation data on top of OSM data — the
-    // default, since elevation is visible at a glance. Its tile server only produces tiles up to
-    // z17 (maxNativeZoom) — beyond that Leaflet upscales the z17 tiles rather than requesting
-    // ones that don't exist. `maxZoom` is left at the other layers' ceiling (20) rather than 17
-    // so the layer control doesn't gray out Topo's radio button the moment you're zoomed in past
-    // 17 on a different layer — Leaflet's control auto-disables any base layer whose maxZoom is
-    // below the current zoom, which otherwise made switching back to Topo look broken.
-    Topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-      attribution:
-        'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
-      maxZoom: 20,
-      maxNativeZoom: 17
-    }),
-    Satellite: L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution:
-          'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-        maxZoom: 19
-      }
-    ),
-    Streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19
-    }),
-    // US-only coverage (a federal service), but genuinely free with no per-key rate limiting —
-    // a good alternative if OpenTopoMap's shared community server is ever unreachable.
-    'USGS Topo (US only)': L.tileLayer(
-      'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: 'Tiles courtesy of the <a href="https://usgs.gov/">U.S. Geological Survey</a>',
-        maxZoom: 20
-      }
-    )
-  }
-  baseLayers.Topo.addTo(map)
-  L.control.layers(baseLayers).addTo(map)
+  addBaseLayers(map)
 
   if (points.length === 0) {
     map.setView([0, 0], 2)
@@ -192,14 +143,6 @@ function formatMessageTitle(message: Message): string {
 
 function formatClockTime(ms: number): string {
   return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-}
-
-// A preview, not the whole entry — the point is to show enough to know it's there and roughly
-// what it says without turning the track page into a second copy of JournalEditor.
-function truncateText(text: string, maxLength: number): string {
-  const trimmed = text.trim()
-  if (trimmed.length <= maxLength) return trimmed
-  return `${trimmed.slice(0, maxLength).trimEnd()}…`
 }
 
 const TIMELINE_ITEM_KIND_LABEL: Record<TimelineItem['kind'], string> = {
@@ -257,7 +200,7 @@ type SelectedItem =
   | { kind: 'message'; id: number }
   | null
 
-function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React.JSX.Element {
+function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
@@ -295,12 +238,19 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openTimelinePicker])
 
-  // The journal entry itself is edited on a separate screen (JournalEditor, via onWriteJournal) —
-  // this is just a read-only preview so the hiker can see its current status without navigating
-  // away. Null means no entry has been written yet, distinct from an Entry with empty text (which
-  // can't actually happen — JournalEditor never saves empty text — but treated the same either way
-  // below, just in case).
-  const [entry, setEntry] = useState<Entry | null>(null)
+  // Journal entry editing is inline (below the map) rather than a separate page, so the hiker can
+  // keep the map/photos/timeline in view while writing. journalSavedTextRef tracks what's actually
+  // been persisted (vs. journalText, which tracks every keystroke) so the unmount/track-switch
+  // flush below only fires an extra save when there's really something unsaved.
+  const [journalText, setJournalText] = useState('')
+  const [journalStatus, setJournalStatus] = useState<
+    'loading' | 'saved' | 'unsaved' | 'saving' | 'error'
+  >('loading')
+  const [journalError, setJournalError] = useState('')
+  const journalTextRef = useRef('')
+  const journalSavedTextRef = useRef('')
+  const journalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const journalTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   const [notes, setNotes] = useState<JournalNote[]>([])
   const [noteContent, setNoteContent] = useState('')
@@ -372,7 +322,15 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setScrubMs(null)
     setScrubStatus('ok')
     setOpenTimelinePicker(null)
-    setEntry(null)
+    setJournalText('')
+    setJournalStatus('loading')
+    setJournalError('')
+    journalTextRef.current = ''
+    journalSavedTextRef.current = ''
+    if (journalTimeoutRef.current) {
+      clearTimeout(journalTimeoutRef.current)
+      journalTimeoutRef.current = null
+    }
     setNotes([])
     setPhotos([])
     setMessages([])
@@ -416,7 +374,11 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         setNotes(fetchedNotes)
         setPhotos(fetchedPhotos)
         setMessages(fetchedMessages)
-        setEntry(fetchedEntry)
+        const initialJournalText = fetchedEntry?.text ?? ''
+        setJournalText(initialJournalText)
+        journalTextRef.current = initialJournalText
+        journalSavedTextRef.current = initialJournalText
+        setJournalStatus('saved')
         if (fetchedPoints.length > 0 && fetchedPoints[0].timestamp !== null) {
           setScrubMs(Date.parse(fetchedPoints[0].timestamp as string))
         }
@@ -434,6 +396,15 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       markerRef.current = null
       photoMarkersRef.current = new Map()
       messageLayerRef.current = null
+      if (journalTimeoutRef.current) {
+        clearTimeout(journalTimeoutRef.current)
+        journalTimeoutRef.current = null
+      }
+      // Best-effort flush of any unsaved journal edits when switching tracks (or unmounting)
+      // before the autosave debounce fires.
+      if (journalTextRef.current !== journalSavedTextRef.current) {
+        void window.api.entries.save(track.id, journalTextRef.current)
+      }
     }
   }, [track.id])
 
@@ -515,6 +486,29 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>): void => {
     applyScrub(Number(e.target.value))
+  }
+
+  const handleJournalChange = (e: ChangeEvent<HTMLTextAreaElement>): void => {
+    const value = e.target.value
+    setJournalText(value)
+    setJournalStatus('unsaved')
+    journalTextRef.current = value
+
+    if (journalTimeoutRef.current) clearTimeout(journalTimeoutRef.current)
+    journalTimeoutRef.current = setTimeout(() => {
+      void (async (): Promise<void> => {
+        setJournalStatus('saving')
+        setJournalError('')
+        try {
+          await window.api.entries.save(track.id, value)
+          journalSavedTextRef.current = value
+          setJournalStatus('saved')
+        } catch (err) {
+          setJournalError(cleanErrorMessage(err))
+          setJournalStatus('error')
+        }
+      })()
+    }, AUTOSAVE_DELAY_MS)
   }
 
   const handleAddNote = async (e: FormEvent): Promise<void> => {
@@ -795,10 +789,14 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                   type="button"
                   onClick={() => {
                     setShowAddDataMenu(false)
-                    onWriteJournal()
+                    journalTextareaRef.current?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center'
+                    })
+                    journalTextareaRef.current?.focus()
                   }}
                 >
-                  Edit journal entry
+                  Jump to journal entry
                 </button>
                 <button
                   type="button"
@@ -959,15 +957,22 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         <div className="journal-preview">
           <div className="journal-preview-header">
             <h2>Journal entry</h2>
-            <button type="button" onClick={onWriteJournal}>
-              {entry && entry.text.trim() !== '' ? 'Edit' : 'Write journal entry'}
-            </button>
+            <span className={`journal-status journal-status-${journalStatus}`}>
+              {journalStatus === 'loading' && 'Loading…'}
+              {journalStatus === 'unsaved' && 'Unsaved changes…'}
+              {journalStatus === 'saving' && 'Saving…'}
+              {journalStatus === 'saved' && 'Saved'}
+              {journalStatus === 'error' && `Couldn't save: ${journalError}`}
+            </span>
           </div>
-          {entry && entry.text.trim() !== '' ? (
-            <p className="journal-preview-text">{truncateText(entry.text, 240)}</p>
-          ) : (
-            <p className="journal-preview-empty">No journal entry written for this day yet.</p>
-          )}
+          <textarea
+            ref={journalTextareaRef}
+            className="journal-textarea"
+            value={journalText}
+            onChange={handleJournalChange}
+            disabled={journalStatus === 'loading'}
+            placeholder="Write about this day on the trail…"
+          />
         </div>
 
         {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (

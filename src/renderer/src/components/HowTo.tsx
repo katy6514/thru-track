@@ -235,21 +235,23 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         </p>
         <ol className="how-to-steps">
           <li>
-            From a day&rsquo;s map view, click <strong>Add data</strong> and choose{' '}
-            <strong>Edit journal entry</strong>.
+            Scroll down from a day&rsquo;s map to the <strong>Journal entry</strong> box, right
+            below the map — or click <strong>Add data</strong> and choose{' '}
+            <strong>Jump to journal entry</strong> to get there in one click. The map, photos, and
+            timeline all stay right above it while you write.
           </li>
           <li>Type. Plain text only — no formatting to fuss with.</li>
           <li>
             That&rsquo;s it. It saves itself a moment after you stop typing; a small status line
-            under the text says <span className="mono-inline">Saved</span>,{' '}
+            next to the heading says <span className="mono-inline">Saved</span>,{' '}
             <span className="mono-inline">Saving&hellip;</span>, or{' '}
             <span className="mono-inline">Unsaved changes&hellip;</span> so you always know where
             you stand.
           </li>
         </ol>
         <p>
-          Come back to <strong>&larr; Back to map</strong> any time, and reopen the same day later —
-          your entry is exactly where you left it.
+          Navigate away any time, even mid-sentence — anything unsaved is flushed first. Reopen the
+          same day later and your entry is exactly where you left it.
         </p>
       </section>
 
@@ -441,7 +443,10 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             <tbody>
               <tr>
                 <td>Journal entry</td>
-                <td>&ldquo;Add data&rdquo; &rarr; &ldquo;Edit journal entry&rdquo;</td>
+                <td>
+                  Below the map, or &ldquo;Add data&rdquo; &rarr; &ldquo;Jump to journal
+                  entry&rdquo;
+                </td>
                 <td>&mdash;</td>
                 <td>No</td>
               </tr>

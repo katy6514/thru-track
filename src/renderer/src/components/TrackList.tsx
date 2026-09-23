@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import type { Trip, Track, GpxImportNeedsDate } from '../../../shared/types'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import type { Trip, Track, TrackPoint, GpxImportNeedsDate } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
+import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
+import { addBaseLayers, attachClickToZoom, trackColor } from '../mapBaseLayers'
 import TrackDetail from './TrackDetail'
-import JournalEditor from './JournalEditor'
 
 interface TrackListProps {
   trip: Trip
@@ -14,7 +17,12 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(false)
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
-  const [showJournal, setShowJournal] = useState(false)
+  const overviewMapContainerRef = useRef<HTMLDivElement>(null)
+  const overviewMapRef = useRef<L.Map | null>(null)
+  // Each track's own points, fetched once per `tracks` change so every day's line can be drawn
+  // on the overview map below — keyed by track id since not every track is guaranteed to have
+  // points (or to still be loading them) at any given moment.
+  const [overviewPoints, setOverviewPoints] = useState<Map<number, TrackPoint[]>>(new Map())
   // Set when a GPX has no timestamps and no date could be inferred from its filename —
   // the hiker needs to supply the day this track was hiked before it's actually imported.
   const [pendingGpxRaw, setPendingGpxRaw] = useState<string | null>(null)
@@ -54,6 +62,71 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   useEffect(() => {
     refresh()
   }, [trip.id])
+
+  // Fetches every listed track's own points whenever the track list changes (a fresh import, a
+  // deletion, switching trips) so the overview map below always has what it needs to draw each
+  // day's line — a separate effect from the map-rendering one below since fetching is async and
+  // rendering shouldn't block on it re-running for reasons unrelated to the data itself.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all(
+      tracks.map((track): Promise<[number, TrackPoint[]]> =>
+        window.api.tracks.getPoints(track.id).then((points) => [track.id, points])
+      )
+    ).then((entries) => {
+      if (!cancelled) setOverviewPoints(new Map(entries))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [tracks])
+
+  // Renders (or re-renders) the overview map whenever there's fresh point data to show. Also
+  // depends on `selectedTrack` even though it isn't read here: this component's own JSX (and the
+  // map container div with it) only exists while `selectedTrack` is null — see the early return
+  // below — so navigating back from a track's detail page remounts a brand new container that
+  // needs its own map built against it.
+  useEffect(() => {
+    const container = overviewMapContainerRef.current
+    if (!container) return
+
+    if (overviewMapRef.current) {
+      overviewMapRef.current.remove()
+      overviewMapRef.current = null
+    }
+
+    const map = L.map(container, { scrollWheelZoom: false })
+    attachClickToZoom(map, container)
+    addBaseLayers(map)
+
+    const allLatLngs: L.LatLngExpression[] = []
+    tracks.forEach((track, index) => {
+      const points = overviewPoints.get(track.id)
+      if (!points || points.length === 0) return
+      const color = trackColor(index)
+      for (const segment of splitTrackIntoSegments(points)) {
+        const latLngs: L.LatLngExpression[] = segment.map((p) => [p.lat, p.lng])
+        L.polyline(latLngs, { color, weight: 4 })
+          .bindTooltip(track.name)
+          .on('click', () => setSelectedTrack(track))
+          .addTo(map)
+        allLatLngs.push(...latLngs)
+      }
+    })
+
+    if (allLatLngs.length > 0) {
+      map.fitBounds(L.latLngBounds(allLatLngs), { padding: [24, 24] })
+    } else {
+      map.setView([0, 0], 2)
+    }
+
+    overviewMapRef.current = map
+
+    return () => {
+      map.remove()
+      overviewMapRef.current = null
+    }
+  }, [tracks, overviewPoints, selectedTrack])
 
   useEffect(() => {
     // A GPX-upload session is scoped to the trip it was started from — switching trips (or
@@ -150,18 +223,8 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }
 
-  if (selectedTrack && showJournal) {
-    return <JournalEditor track={selectedTrack} onBack={() => setShowJournal(false)} />
-  }
-
   if (selectedTrack) {
-    return (
-      <TrackDetail
-        track={selectedTrack}
-        onBack={() => setSelectedTrack(null)}
-        onWriteJournal={() => setShowJournal(true)}
-      />
-    )
+    return <TrackDetail track={selectedTrack} onBack={() => setSelectedTrack(null)} />
   }
 
   return (
@@ -261,25 +324,38 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
       {tracks.length === 0 ? (
         <p className="empty">No tracks yet. Import a GPX file to add this trip&apos;s first day.</p>
       ) : (
-        <ul className="tracks">
-          {tracks.map((track) => (
-            <li key={track.id} className="track-row">
-              <button
-                type="button"
-                className="track-name"
-                onClick={() => setSelectedTrack(track)}
-              >
-                {track.name}
-              </button>
-              <span className="track-date">{track.date}</span>
-              <div className="track-actions">
-                <button type="button" onClick={() => handleDelete(track)}>
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="track-list-layout">
+          <div className="track-list-map-col">
+            <div className="track-map" ref={overviewMapContainerRef} />
+          </div>
+
+          <div className="track-list-side-col">
+            <ul className="tracks">
+              {tracks.map((track, index) => (
+                <li key={track.id} className="track-row">
+                  <span
+                    className="track-color-swatch"
+                    style={{ backgroundColor: trackColor(index) }}
+                    aria-hidden="true"
+                  />
+                  <button
+                    type="button"
+                    className="track-name"
+                    onClick={() => setSelectedTrack(track)}
+                  >
+                    {track.name}
+                  </button>
+                  <span className="track-date">{track.date}</span>
+                  <div className="track-actions">
+                    <button type="button" onClick={() => handleDelete(track)}>
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
     </div>
   )
