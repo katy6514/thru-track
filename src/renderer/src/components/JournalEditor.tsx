@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { Track } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
+import { formatTrackDate } from '../formatTrackDate'
 
 interface JournalEditorProps {
   track: Track
@@ -93,7 +94,7 @@ function JournalEditor({ track, onBack }: JournalEditorProps): React.JSX.Element
       </button>
 
       <h1>{track.name}</h1>
-      <p className="track-date">{track.date}</p>
+      <p className="track-date">{formatTrackDate(track.date)}</p>
 
       <textarea
         className="journal-textarea"

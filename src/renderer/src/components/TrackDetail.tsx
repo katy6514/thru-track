@@ -7,6 +7,7 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import type {
   Track,
   TrackPoint,
+  Entry,
   JournalNote,
   Photo,
   PendingPhoto,
@@ -15,8 +16,10 @@ import type {
   Message
 } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
+import { formatTrackDate } from '../formatTrackDate'
 import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
 import { interpolatePosition } from '../../../shared/positionInterpolator'
+import { computeTrackStats } from '../../../shared/trackStats'
 import {
   clusterTimelineItems,
   type TimelineItem,
@@ -173,6 +176,18 @@ function formatMessageTitle(message: Message): string {
   return new Date(message.timestamp).toLocaleString()
 }
 
+function formatClockTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
+// A preview, not the whole entry — the point is to show enough to know it's there and roughly
+// what it says without turning the track page into a second copy of JournalEditor.
+function truncateText(text: string, maxLength: number): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= maxLength) return trimmed
+  return `${trimmed.slice(0, maxLength).trimEnd()}…`
+}
+
 const TIMELINE_ITEM_KIND_LABEL: Record<TimelineItem['kind'], string> = {
   note: 'Note',
   photo: 'Photo',
@@ -262,6 +277,13 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openTimelinePicker])
 
+  // The journal entry itself is edited on a separate screen (JournalEditor, via onWriteJournal) —
+  // this is just a read-only preview so the hiker can see its current status without navigating
+  // away. Null means no entry has been written yet, distinct from an Entry with empty text (which
+  // can't actually happen — JournalEditor never saves empty text — but treated the same either way
+  // below, just in case).
+  const [entry, setEntry] = useState<Entry | null>(null)
+
   const [notes, setNotes] = useState<JournalNote[]>([])
   const [noteContent, setNoteContent] = useState('')
   const [noteTimestampInput, setNoteTimestampInput] = useState('')
@@ -332,6 +354,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setScrubMs(null)
     setScrubStatus('ok')
     setOpenTimelinePicker(null)
+    setEntry(null)
     setNotes([])
     setPhotos([])
     setMessages([])
@@ -357,9 +380,10 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
       window.api.tracks.getPoints(track.id),
       window.api.notes.list(track.id),
       window.api.photos.list(track.id),
-      window.api.messages.list(track.id)
+      window.api.messages.list(track.id),
+      window.api.entries.get(track.id)
     ])
-      .then(([fetchedPoints, fetchedNotes, fetchedPhotos, fetchedMessages]) => {
+      .then(([fetchedPoints, fetchedNotes, fetchedPhotos, fetchedMessages, fetchedEntry]) => {
         if (cancelled || !mapContainerRef.current) return
         if (mapRef.current) {
           mapRef.current.remove()
@@ -374,6 +398,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         setNotes(fetchedNotes)
         setPhotos(fetchedPhotos)
         setMessages(fetchedMessages)
+        setEntry(fetchedEntry)
         if (fetchedPoints.length > 0 && fetchedPoints[0].timestamp !== null) {
           setScrubMs(Date.parse(fetchedPoints[0].timestamp as string))
         }
@@ -421,6 +446,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const trackStartMs = isTimed && points ? Date.parse(points[0].timestamp as string) : null
   const trackEndMs =
     isTimed && points ? Date.parse(points[points.length - 1].timestamp as string) : null
+  const trackStats = points !== null ? computeTrackStats(points) : null
 
   // Keeps the map's photo pins in sync with the `photos` state, independent of the initial
   // track-load effect above — this also fires right after a fresh batch is imported, without
@@ -765,6 +791,36 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
         </div>
 
         <h1>{track.name}</h1>
+        <p className="track-date">{formatTrackDate(track.date)}</p>
+
+        <dl className="track-stats">
+          {trackStats && (
+            <div className="track-stat">
+              <dt className="track-stat-label">Distance</dt>
+              <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
+            </div>
+          )}
+          {trackStartMs !== null && (
+            <div className="track-stat">
+              <dt className="track-stat-label">Start</dt>
+              <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
+            </div>
+          )}
+          {trackEndMs !== null && (
+            <div className="track-stat">
+              <dt className="track-stat-label">End</dt>
+              <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
+            </div>
+          )}
+          {trackStats !== null && trackStats.elevationGainFeet !== null && (
+            <div className="track-stat">
+              <dt className="track-stat-label">Elevation gain</dt>
+              <dd className="track-stat-value">
+                {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
+              </dd>
+            </div>
+          )}
+        </dl>
 
         {phoneUploadSession && (
           <div className="phone-upload-panel">
@@ -835,6 +891,20 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
 
         <div className="track-map" ref={mapContainerRef} />
 
+        <div className="journal-preview">
+          <div className="journal-preview-header">
+            <h2>Journal entry</h2>
+            <button type="button" onClick={onWriteJournal}>
+              {entry && entry.text.trim() !== '' ? 'Edit' : 'Write journal entry'}
+            </button>
+          </div>
+          {entry && entry.text.trim() !== '' ? (
+            <p className="journal-preview-text">{truncateText(entry.text, 240)}</p>
+          ) : (
+            <p className="journal-preview-empty">No journal entry written for this day yet.</p>
+          )}
+        </div>
+
         {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (
           <div className="timeline">
             <div className="timeline-track-row">
@@ -852,6 +922,9 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                     }
                   >
                     &#8249; {timelineBeforeItems.length}
+                    <span className="timeline-tooltip">
+                      {timelineBeforeItems.length} photos taken before track recording started
+                    </span>
                   </button>
                   {openTimelinePicker === 'before' && (
                     <div className="dropdown-menu-options timeline-cluster-options">
@@ -888,9 +961,12 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                               ? `Photo at ${time}`
                               : `${TIMELINE_ITEM_KIND_LABEL[item.kind]} at ${time}: ${summary}`
                           }
-                          title={summary}
                           onClick={() => setSelectedItem({ kind: item.kind, id: item.id })}
-                        />
+                        >
+                          <span className="timeline-tooltip">
+                            {item.kind === 'photo' ? time : summary}
+                          </span>
+                        </button>
                       )
                     }
 
@@ -909,6 +985,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                           onClick={() => setOpenTimelinePicker(isOpen ? null : index)}
                         >
                           {cluster.items.length}
+                          <span className="timeline-tooltip">{cluster.items.length} photos</span>
                         </button>
                         {isOpen && (
                           <div className="dropdown-menu-options timeline-cluster-options">
@@ -935,6 +1012,9 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
                     }
                   >
                     {timelineAfterItems.length} &#8250;
+                    <span className="timeline-tooltip">
+                      {timelineAfterItems.length} photos taken after track recording ended
+                    </span>
                   </button>
                   {openTimelinePicker === 'after' && (
                     <div className="dropdown-menu-options dropdown-menu-options-end timeline-cluster-options">
