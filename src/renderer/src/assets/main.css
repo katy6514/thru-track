@@ -413,8 +413,19 @@ button:hover {
   margin-top: 16px;
 }
 
+/* Bookends the scrubbable slider with the two edge-bucket badges (before/after the track's own
+   recorded range) when either has items — flex-start rather than center/stretch so the badges
+   sit level with the slider's own thumb, not stretched down across the marker strip below it. */
+.timeline-track-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
 .timeline-track {
   position: relative;
+  flex: 1;
+  min-width: 0;
 }
 
 .timeline-slider {
@@ -422,13 +433,43 @@ button:hover {
   display: block;
 }
 
+/* A native range thumb's travel is inset from the box's own edges by half the thumb's own width
+   (at value=min the thumb's center sits at thumbWidth/2 from the left, not at the very edge) —
+   so a marker positioned by plain left:X% (full box width) doesn't actually line up with where
+   the slider thumb sits for that same value. The browser's default thumb width isn't
+   discoverable from CSS, so it's reset to an explicit, known size here — TIMELINE_THUMB_WIDTH_PX
+   in TrackDetail.tsx must match this number, since that's what compensates marker positions for
+   this same inset. */
+.timeline-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background-color: var(--ev-c-gray-2);
+  border-radius: 2px;
+}
+
+.timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background-color: var(--accent-trail);
+  cursor: pointer;
+}
+
 /* Markers sit in a thin strip just under the slider, positioned along the same 0-100% axis as
-   its min/max range so a note lines up with where it actually happened in the day. */
+   its min/max range so a note lines up with where it actually happened in the day. In normal
+   document flow (not absolutely positioned against .timeline-track) so its width tracks the
+   slider's the same simple way the slider's own width does — an absolutely-positioned strip
+   pinned via left/right:0 depends on correctly re-measuring its flex-shrinking ancestor
+   (.track-detail narrows whenever the side panel opens) on every resize, which doesn't reliably
+   happen in practice: opening the side panel narrowed the map and slider but left this strip's
+   markers/cluster badges sitting at the old, wider position.
+   Sibling markers within it are still absolutely positioned — relative to this element, not
+   .timeline-track — for their own percent-based horizontal placement. */
 .timeline-markers {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  position: relative;
+  margin-top: 4px;
   height: 14px;
   pointer-events: none;
 }
@@ -513,6 +554,24 @@ button:hover {
 .timeline-cluster-options button {
   font-size: 13px;
   white-space: nowrap;
+}
+
+/* A pill rather than the round cluster-badge shape, so an edge bucket (photos from before/after
+   this track's own recorded window — no GPS position to place them at, see
+   clusterTimelineItems.ts) reads as visually distinct from an in-range cluster at a glance. */
+.timeline-edge-bucket-button {
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  background-color: var(--ev-c-gray-2);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.timeline-edge-bucket-button:hover {
+  background-color: var(--ev-c-gray-1);
 }
 
 .timeline-status {

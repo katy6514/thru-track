@@ -179,6 +179,20 @@ const TIMELINE_ITEM_KIND_LABEL: Record<TimelineItem['kind'], string> = {
   message: 'Message'
 }
 
+// Must match .timeline-slider::-webkit-slider-thumb's width in main.css exactly.
+const TIMELINE_THUMB_WIDTH_PX = 14
+
+// A native range thumb's travel is inset from the track's own edges by half the thumb's width
+// (at value=min the thumb sits at TIMELINE_THUMB_WIDTH_PX / 2 from the left, not at the very
+// edge) — plain `left: X%` positions a marker against the full track width instead, so it drifts
+// away from where the slider thumb actually sits for that same value the closer to either edge
+// it is. This reproduces the thumb's own inset so a marker lines up with the thumb position for
+// its timestamp.
+function timelineMarkerLeft(percent: number): string {
+  const half = TIMELINE_THUMB_WIDTH_PX / 2
+  return `calc(${half}px + (100% - ${TIMELINE_THUMB_WIDTH_PX}px) * ${percent / 100})`
+}
+
 // Looks up a timeline item's own display text (a note's/message's content, or just "Photo" —
 // there's nothing photo-specific to show inline) — shared by a standalone marker's title/aria
 // label and by its entry in an open cluster's picker list.
@@ -224,22 +238,29 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
-  // Which timeline cluster (by index into the array clusterTimelineItems returns) currently has
-  // its picker open — at most one at a time. Indexes are recomputed fresh each render from the
-  // same notes/photos/messages state the picker itself reads, so they stay valid between renders.
-  const [openClusterIndex, setOpenClusterIndex] = useState<number | null>(null)
-  const openClusterRef = useRef<HTMLDivElement>(null)
+  // Which timeline picker currently has its list open — at most one at a time. A number is an
+  // index into the clusterTimelineItems() array (recomputed fresh each render from the same
+  // notes/photos/messages state the picker itself reads, so indexes stay valid between renders);
+  // 'before'/'after' are the two edge buckets for items outside the track's own recorded time
+  // range (see timelineBeforeItems/timelineAfterItems below).
+  const [openTimelinePicker, setOpenTimelinePicker] = useState<number | 'before' | 'after' | null>(
+    null
+  )
+  const openTimelinePickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (openClusterIndex === null) return
+    if (openTimelinePicker === null) return
     const handleClickOutside = (e: MouseEvent): void => {
-      if (openClusterRef.current && !openClusterRef.current.contains(e.target as Node)) {
-        setOpenClusterIndex(null)
+      if (
+        openTimelinePickerRef.current &&
+        !openTimelinePickerRef.current.contains(e.target as Node)
+      ) {
+        setOpenTimelinePicker(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [openClusterIndex])
+  }, [openTimelinePicker])
 
   const [notes, setNotes] = useState<JournalNote[]>([])
   const [noteContent, setNoteContent] = useState('')
@@ -310,7 +331,7 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     setPoints(null)
     setScrubMs(null)
     setScrubStatus('ok')
-    setOpenClusterIndex(null)
+    setOpenTimelinePicker(null)
     setNotes([])
     setPhotos([])
     setMessages([])
@@ -635,10 +656,45 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
     })),
     ...messages.map((m) => ({ kind: 'message' as const, id: m.id, ms: Date.parse(m.timestamp) }))
   ]
+  // A photo taken before the hiker started recording (or after they stopped — an evening/sunset
+  // shot from camp is the common case) has no meaningful position on the scrub timeline at all:
+  // there's no GPS data for that moment to place a pin at. Rather than force it onto the 0-100%
+  // scrub axis (which either mis-times it or, unclamped, renders it off the edge of the strip
+  // entirely), these get their own two edge buckets — same click-to-pick-one interaction as an
+  // in-range cluster, just outside the scrubbable range instead of faking a position within it.
+  const timelineBeforeItems =
+    trackStartMs !== null
+      ? timelineItems.filter((item) => item.ms < trackStartMs).sort((a, b) => a.ms - b.ms)
+      : []
+  const timelineAfterItems =
+    trackEndMs !== null
+      ? timelineItems.filter((item) => item.ms > trackEndMs).sort((a, b) => a.ms - b.ms)
+      : []
+  const timelineInRangeItems =
+    trackStartMs !== null && trackEndMs !== null
+      ? timelineItems.filter((item) => item.ms >= trackStartMs && item.ms <= trackEndMs)
+      : []
   const timelineClusters: TimelineCluster[] =
     trackStartMs !== null && trackEndMs !== null
-      ? clusterTimelineItems(timelineItems, trackStartMs, trackEndMs)
+      ? clusterTimelineItems(timelineInRangeItems, trackStartMs, trackEndMs)
       : []
+
+  // Shared by the in-range cluster picker and the before/after edge-bucket pickers — all three
+  // are "a list of items, click one to select it" with identical row formatting.
+  const renderTimelinePickerItems = (items: TimelineItem[]): React.JSX.Element[] =>
+    items.map((item) => (
+      <button
+        key={`${item.kind}-${item.id}`}
+        type="button"
+        onClick={() => {
+          setOpenTimelinePicker(null)
+          setSelectedItem({ kind: item.kind, id: item.id })
+        }}
+      >
+        {new Date(item.ms).toLocaleTimeString()} &mdash; {TIMELINE_ITEM_KIND_LABEL[item.kind]}
+        {item.kind === 'photo' ? '' : `: ${timelineItemSummary(item, notes, messages)}`}
+      </button>
+    ))
 
   return (
     <div className="track-detail-layout">
@@ -781,79 +837,112 @@ function TrackDetail({ track, onBack, onWriteJournal }: TrackDetailProps): React
 
         {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (
           <div className="timeline">
-            <div className="timeline-track">
-              <input
-                className="timeline-slider"
-                type="range"
-                min={trackStartMs}
-                max={trackEndMs}
-                step={1000}
-                value={scrubMs}
-                onChange={handleScrub}
-              />
-              <div className="timeline-markers">
-                {timelineClusters.map((cluster, index) => {
-                  if (cluster.items.length === 1) {
-                    const item = cluster.items[0]
-                    const summary = timelineItemSummary(item, notes, messages)
-                    const time = new Date(item.ms).toLocaleTimeString()
-                    return (
-                      <button
-                        key={`${item.kind}-${item.id}`}
-                        type="button"
-                        className={`timeline-marker timeline-marker-${item.kind}`}
-                        style={{ left: `${cluster.percent}%` }}
-                        aria-label={
-                          item.kind === 'photo'
-                            ? `Photo at ${time}`
-                            : `${TIMELINE_ITEM_KIND_LABEL[item.kind]} at ${time}: ${summary}`
-                        }
-                        title={summary}
-                        onClick={() => setSelectedItem({ kind: item.kind, id: item.id })}
-                      />
-                    )
-                  }
-
-                  const isOpen = openClusterIndex === index
-                  return (
-                    <div
-                      key={`cluster-${index}`}
-                      className="dropdown-menu timeline-marker-cluster-wrap"
-                      style={{ left: `${cluster.percent}%` }}
-                      ref={isOpen ? openClusterRef : undefined}
-                    >
-                      <button
-                        type="button"
-                        className="timeline-marker-cluster"
-                        aria-label={`${cluster.items.length} items around ${new Date(cluster.items[0].ms).toLocaleTimeString()} — click to pick one`}
-                        onClick={() => setOpenClusterIndex(isOpen ? null : index)}
-                      >
-                        {cluster.items.length}
-                      </button>
-                      {isOpen && (
-                        <div className="dropdown-menu-options timeline-cluster-options">
-                          {cluster.items.map((item) => (
-                            <button
-                              key={`${item.kind}-${item.id}`}
-                              type="button"
-                              onClick={() => {
-                                setOpenClusterIndex(null)
-                                setSelectedItem({ kind: item.kind, id: item.id })
-                              }}
-                            >
-                              {new Date(item.ms).toLocaleTimeString()} &mdash;{' '}
-                              {TIMELINE_ITEM_KIND_LABEL[item.kind]}
-                              {item.kind === 'photo'
-                                ? ''
-                                : `: ${timelineItemSummary(item, notes, messages)}`}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+            <div className="timeline-track-row">
+              {timelineBeforeItems.length > 0 && (
+                <div
+                  className="dropdown-menu timeline-edge-bucket"
+                  ref={openTimelinePicker === 'before' ? openTimelinePickerRef : undefined}
+                >
+                  <button
+                    type="button"
+                    className="timeline-edge-bucket-button"
+                    aria-label={`${timelineBeforeItems.length} item${timelineBeforeItems.length === 1 ? '' : 's'} from before this track started recording — click to pick one`}
+                    onClick={() =>
+                      setOpenTimelinePicker(openTimelinePicker === 'before' ? null : 'before')
+                    }
+                  >
+                    &#8249; {timelineBeforeItems.length}
+                  </button>
+                  {openTimelinePicker === 'before' && (
+                    <div className="dropdown-menu-options timeline-cluster-options">
+                      {renderTimelinePickerItems(timelineBeforeItems)}
                     </div>
-                  )
-                })}
+                  )}
+                </div>
+              )}
+
+              <div className="timeline-track">
+                <input
+                  className="timeline-slider"
+                  type="range"
+                  min={trackStartMs}
+                  max={trackEndMs}
+                  step={1000}
+                  value={scrubMs}
+                  onChange={handleScrub}
+                />
+                <div className="timeline-markers">
+                  {timelineClusters.map((cluster, index) => {
+                    if (cluster.items.length === 1) {
+                      const item = cluster.items[0]
+                      const summary = timelineItemSummary(item, notes, messages)
+                      const time = new Date(item.ms).toLocaleTimeString()
+                      return (
+                        <button
+                          key={`${item.kind}-${item.id}`}
+                          type="button"
+                          className={`timeline-marker timeline-marker-${item.kind}`}
+                          style={{ left: timelineMarkerLeft(cluster.percent) }}
+                          aria-label={
+                            item.kind === 'photo'
+                              ? `Photo at ${time}`
+                              : `${TIMELINE_ITEM_KIND_LABEL[item.kind]} at ${time}: ${summary}`
+                          }
+                          title={summary}
+                          onClick={() => setSelectedItem({ kind: item.kind, id: item.id })}
+                        />
+                      )
+                    }
+
+                    const isOpen = openTimelinePicker === index
+                    return (
+                      <div
+                        key={`cluster-${index}`}
+                        className="dropdown-menu timeline-marker-cluster-wrap"
+                        style={{ left: timelineMarkerLeft(cluster.percent) }}
+                        ref={isOpen ? openTimelinePickerRef : undefined}
+                      >
+                        <button
+                          type="button"
+                          className="timeline-marker-cluster"
+                          aria-label={`${cluster.items.length} items around ${new Date(cluster.items[0].ms).toLocaleTimeString()} — click to pick one`}
+                          onClick={() => setOpenTimelinePicker(isOpen ? null : index)}
+                        >
+                          {cluster.items.length}
+                        </button>
+                        {isOpen && (
+                          <div className="dropdown-menu-options timeline-cluster-options">
+                            {renderTimelinePickerItems(cluster.items)}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
+
+              {timelineAfterItems.length > 0 && (
+                <div
+                  className="dropdown-menu timeline-edge-bucket"
+                  ref={openTimelinePicker === 'after' ? openTimelinePickerRef : undefined}
+                >
+                  <button
+                    type="button"
+                    className="timeline-edge-bucket-button"
+                    aria-label={`${timelineAfterItems.length} item${timelineAfterItems.length === 1 ? '' : 's'} from after this track stopped recording — click to pick one`}
+                    onClick={() =>
+                      setOpenTimelinePicker(openTimelinePicker === 'after' ? null : 'after')
+                    }
+                  >
+                    {timelineAfterItems.length} &#8250;
+                  </button>
+                  {openTimelinePicker === 'after' && (
+                    <div className="dropdown-menu-options dropdown-menu-options-end timeline-cluster-options">
+                      {renderTimelinePickerItems(timelineAfterItems)}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="timeline-status">
               <span>{new Date(scrubMs).toLocaleTimeString()}</span>
