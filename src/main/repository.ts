@@ -44,6 +44,12 @@ export class MultiDateRequiredError extends Error {
   }
 }
 
+// Thrown when trying to rename or re-date a track that has real GPS timestamps — a live-recorded
+// track's name/date come from its own data, not a hiker's typed-in guess, so editing them isn't
+// offered at all for a timed track. Only an untimed track (a CalTopo-style retrace or a planning
+// route with no GPS clock) can have these edited.
+export class TrackNotTimelessError extends Error {}
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 function isPlausibleDate(year: number, month: number, day: number): boolean {
@@ -196,9 +202,9 @@ function toMessage(row: MessageRow): Message {
   }
 }
 
-function requireName(name: string): string {
+function requireName(name: string, label: string = 'Trip'): string {
   const trimmed = name.trim()
-  if (!trimmed) throw new Error('Trip name must not be empty')
+  if (!trimmed) throw new Error(`${label} name must not be empty`)
   return trimmed
 }
 
@@ -391,6 +397,39 @@ export class Repository {
       .prepare('SELECT * FROM tracks WHERE trip_id = ? ORDER BY date ASC, id ASC')
       .all(tripId) as TrackRow[]
     return rows.map(toTrack)
+  }
+
+  // Renaming/re-dating is only offered for an untimed track (see TrackNotTimelessError) — a timed
+  // track's name/date already come from real GPS data, and letting a hiker overwrite that with a
+  // typed-in guess would contradict the app's "no guessing" stance on everything else timeline/
+  // position related.
+  updateTrack(id: number, updates: { name?: string; date?: string }): Track {
+    const row = this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(id) as TrackRow | undefined
+    if (!row) throw new Error(`Track ${id} not found`)
+
+    if (updates.name !== undefined || updates.date !== undefined) {
+      const firstPoint = this.db
+        .prepare('SELECT timestamp FROM track_points WHERE track_id = ? LIMIT 1')
+        .get(id) as { timestamp: string | null } | undefined
+      const isTimed = firstPoint !== undefined && firstPoint.timestamp !== null
+      if (isTimed) {
+        throw new TrackNotTimelessError(
+          'Only an untimed track (no GPS timestamps) can have its name or date edited'
+        )
+      }
+    }
+
+    const name = updates.name !== undefined ? requireName(updates.name, 'Track') : row.name
+    let date = row.date
+    if (updates.date !== undefined) {
+      if (!ISO_DATE.test(updates.date)) {
+        throw new Error('Date must be in YYYY-MM-DD format')
+      }
+      date = updates.date
+    }
+
+    this.db.prepare('UPDATE tracks SET name = ?, date = ? WHERE id = ?').run(name, date, id)
+    return toTrack(this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(id) as TrackRow)
   }
 
   getTrackPoints(trackId: number): TrackPoint[] {

@@ -52,6 +52,11 @@ const photoIcon = L.divIcon({
 interface TrackDetailProps {
   track: Track
   onBack: () => void
+  // Called after a successful name/date edit (see the track-info-edit form below) so the parent
+  // — which owns the selected Track object this component only receives as a prop — can update
+  // its own copy. Without this the header would keep showing the pre-edit name/date until the
+  // hiker navigated away and back.
+  onTrackUpdated: (track: Track) => void
 }
 
 // Debounce autosave: save AUTOSAVE_DELAY_MS after the hiker stops typing, rather than requiring
@@ -210,7 +215,7 @@ type SelectedItem =
   | { kind: 'message'; id: number }
   | null
 
-function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
+function TrackDetail({ track, onBack, onTrackUpdated }: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
@@ -222,6 +227,15 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
   const preOverlayCenterRef = useRef<L.LatLng | null>(null)
   const [error, setError] = useState('')
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
+  // Renaming/re-dating (see the track-info-edit form near the header below) is only offered for
+  // an untimed track — a timed track's name/date come from its own real GPS data, not something
+  // a hiker should be able to casually overwrite. Kept separate from journalEditing below since
+  // the two are unrelated pieces of the header/page.
+  const [editingTrackInfo, setEditingTrackInfo] = useState(false)
+  const [trackNameInput, setTrackNameInput] = useState('')
+  const [trackDateInput, setTrackDateInput] = useState('')
+  const [savingTrackInfo, setSavingTrackInfo] = useState(false)
+  const [trackInfoError, setTrackInfoError] = useState('')
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
   // Which timeline picker currently has its list open — at most one at a time. A number is an
@@ -334,6 +348,8 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
     let cancelled = false
     setError('')
     setPoints(null)
+    setEditingTrackInfo(false)
+    setTrackInfoError('')
     setScrubMs(null)
     setScrubStatus('ok')
     setOpenTimelinePicker(null)
@@ -452,6 +468,36 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
   const trackEndMs =
     isTimed && points ? Date.parse(points[points.length - 1].timestamp as string) : null
   const trackStats = points !== null ? computeTrackStats(points) : null
+
+  const handleStartEditingTrackInfo = (): void => {
+    setTrackNameInput(track.name)
+    setTrackDateInput(track.date)
+    setTrackInfoError('')
+    setEditingTrackInfo(true)
+  }
+
+  const handleCancelEditingTrackInfo = (): void => {
+    setEditingTrackInfo(false)
+    setTrackInfoError('')
+  }
+
+  const handleSaveTrackInfo = async (e: FormEvent): Promise<void> => {
+    e.preventDefault()
+    setSavingTrackInfo(true)
+    setTrackInfoError('')
+    try {
+      const updated = await window.api.tracks.update(track.id, {
+        name: trackNameInput,
+        date: trackDateInput
+      })
+      onTrackUpdated(updated)
+      setEditingTrackInfo(false)
+    } catch (err) {
+      setTrackInfoError(cleanErrorMessage(err))
+    } finally {
+      setSavingTrackInfo(false)
+    }
+  }
 
   // Keeps the map's photo pins in sync with the `photos` state, independent of the initial
   // track-load effect above — this also fires right after a fresh batch is imported, without
@@ -874,8 +920,57 @@ function TrackDetail({ track, onBack }: TrackDetailProps): React.JSX.Element {
           </div>
         </div>
 
-        <h1>{track.name}</h1>
-        <p className="track-date">{formatTrackDate(track.date)}</p>
+        {editingTrackInfo ? (
+          <form className="track-info-edit" onSubmit={handleSaveTrackInfo}>
+            <label htmlFor="track-name-input">Name</label>
+            <input
+              id="track-name-input"
+              type="text"
+              className="track-info-edit-name"
+              value={trackNameInput}
+              onChange={(e) => setTrackNameInput(e.target.value)}
+              required
+              autoFocus
+            />
+            <label htmlFor="track-date-edit-input">Date</label>
+            <div className="track-info-edit-controls">
+              <input
+                id="track-date-edit-input"
+                type="date"
+                value={trackDateInput}
+                onChange={(e) => setTrackDateInput(e.target.value)}
+                required
+              />
+              <button type="submit" disabled={savingTrackInfo}>
+                {savingTrackInfo ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelEditingTrackInfo}
+                disabled={savingTrackInfo}
+              >
+                Cancel
+              </button>
+            </div>
+            {trackInfoError && <p className="error">{trackInfoError}</p>}
+          </form>
+        ) : (
+          <>
+            <div className="track-title-row">
+              <h1>{track.name}</h1>
+              {points !== null && !isTimed && (
+                <button
+                  type="button"
+                  className="track-title-edit-button"
+                  onClick={handleStartEditingTrackInfo}
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            <p className="track-date">{formatTrackDate(track.date)}</p>
+          </>
+        )}
 
         <dl className="track-stats">
           {trackStats && (

@@ -55,6 +55,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('tracks:list', (_event, tripId: number) => repository.listTracksForTrip(tripId))
 
+  ipcMain.handle(
+    'tracks:update',
+    (_event, id: number, updates: { name?: string; date?: string }): Track =>
+      repository.updateTrack(id, updates)
+  )
+
   ipcMain.handle('tracks:delete', async (_event, id: number): Promise<void> => {
     const { deletedPhotoFilepaths } = repository.deleteTrack(id)
     for (const filepath of deletedPhotoFilepaths) {

@@ -6,6 +6,7 @@ import {
   Repository,
   DateRequiredError,
   MultiDateRequiredError,
+  TrackNotTimelessError,
   inferDateFromFilename
 } from './repository'
 
@@ -346,6 +347,59 @@ describe('Repository multi-<trk> GPX import', () => {
     }
     expect(row.gpx_raw).toContain('Leg A')
     expect(row.gpx_raw).not.toContain('Leg B')
+  })
+})
+
+describe('Repository track rename/re-date', () => {
+  let repo: Repository
+  let tripId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    tripId = repo.createTrip('PCT 2026').id
+  })
+
+  it('renames and re-dates an untimed track', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
+    const updated = repo.updateTrack(track.id, { name: 'New Name', date: '2026-08-15' })
+    expect(updated.name).toBe('New Name')
+    expect(updated.date).toBe('2026-08-15')
+    expect(updated.id).toBe(track.id)
+  })
+
+  it('updates only the field given, leaving the other unchanged', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx('Original'), { date: '2026-07-01' })
+    const renamedOnly = repo.updateTrack(track.id, { name: 'Renamed' })
+    expect(renamedOnly.name).toBe('Renamed')
+    expect(renamedOnly.date).toBe('2026-07-01')
+
+    const redatedOnly = repo.updateTrack(track.id, { date: '2026-09-01' })
+    expect(redatedOnly.name).toBe('Renamed')
+    expect(redatedOnly.date).toBe('2026-09-01')
+  })
+
+  it('rejects renaming or re-dating a timed (live-recorded) track', () => {
+    const track = importOneTrack(repo, tripId, sampleGpx())
+    expect(() => repo.updateTrack(track.id, { name: 'New Name' })).toThrow(TrackNotTimelessError)
+    expect(() => repo.updateTrack(track.id, { date: '2026-08-15' })).toThrow(
+      TrackNotTimelessError
+    )
+  })
+
+  it('rejects an empty name', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
+    expect(() => repo.updateTrack(track.id, { name: '   ' })).toThrow()
+  })
+
+  it('rejects a malformed date', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
+    expect(() => repo.updateTrack(track.id, { date: 'not-a-date' })).toThrow()
+  })
+
+  it('throws when the track does not exist', () => {
+    expect(() => repo.updateTrack(999, { name: 'New Name' })).toThrow()
   })
 })
 

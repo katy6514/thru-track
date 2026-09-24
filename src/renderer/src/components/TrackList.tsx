@@ -264,7 +264,16 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   }
 
   if (selectedTrack) {
-    return <TrackDetail track={selectedTrack} onBack={() => setSelectedTrack(null)} />
+    return (
+      <TrackDetail
+        track={selectedTrack}
+        onBack={() => setSelectedTrack(null)}
+        onTrackUpdated={(updated) => {
+          setSelectedTrack(updated)
+          refresh()
+        }}
+      />
+    )
   }
 
   return (

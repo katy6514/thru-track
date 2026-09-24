@@ -402,6 +402,52 @@ button:hover {
   font-weight: 600;
 }
 
+/* Houses the title next to its Edit button (untimed tracks only — see canEditTrackInfo in
+   TrackDetail.tsx) — takes over h1's own bottom margin so the row, not the heading itself, sets
+   the space before the date line beneath it. */
+.track-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 24px;
+}
+
+.track-title-row h1 {
+  margin: 0;
+}
+
+.track-title-edit-button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.track-info-edit {
+  background-color: var(--color-background-soft);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.track-info-edit label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ev-c-text-2);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.track-info-edit-name {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.track-info-edit-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 /* A stack of label/value rows (date, distance, start/end time, elevation gain) rather than a
    literal HTML table — several of these are conditionally omitted (start/end on a timeless
    track, elevation gain when the track has no elevation data at all), which a <dl> handles far
