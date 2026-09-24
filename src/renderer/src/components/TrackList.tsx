@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Trip, Track, TrackPoint, GpxImportNeedsDate } from '../../../shared/types'
+import type {
+  Trip,
+  Track,
+  TrackPoint,
+  GpxImportNeedsDate,
+  GpxImportNeedsStartDate
+} from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
 import { addBaseLayers, attachClickToZoom, trackColor } from '../mapBaseLayers'
@@ -27,6 +33,15 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   // the hiker needs to supply the day this track was hiked before it's actually imported.
   const [pendingGpxRaw, setPendingGpxRaw] = useState<string | null>(null)
   const [dateInput, setDateInput] = useState('')
+  // Set when the GPX file holds several <trk> segments (e.g. a whole trail's worth of legs from
+  // one CalTopo export) and more than one of them has no timestamp of its own — the hiker
+  // supplies a single start date and each untimed segment is dated sequentially from there
+  // instead of prompting once per segment.
+  const [pendingMultiGpx, setPendingMultiGpx] = useState<{
+    gpxRaw: string
+    segmentCount: number
+  } | null>(null)
+  const [startDateInput, setStartDateInput] = useState('')
 
   // Set while a phone GPX-upload session (issue #34) is running: the URL/QR the hiker's phone
   // connects to. Null means no session is active — the server itself only runs on the main
@@ -138,12 +153,17 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   }, [trip.id])
 
   // Shared by the file-picker import below and the phone-upload event listener further down —
-  // both paths resolve to the same Track | GpxImportNeedsDate shape, so a track needing a date
-  // surfaces through the same prompt regardless of where it came from.
-  const applyGpxImportResult = (result: Track | GpxImportNeedsDate): void => {
+  // both paths resolve to the same result shape, so a track needing a date (or a multi-segment
+  // file needing a start date) surfaces through the same prompt regardless of where it came from.
+  const applyGpxImportResult = (
+    result: Track[] | GpxImportNeedsDate | GpxImportNeedsStartDate
+  ): void => {
     if ('needsDate' in result) {
       setPendingGpxRaw(result.gpxRaw)
       setDateInput('')
+    } else if ('needsStartDate' in result) {
+      setPendingMultiGpx({ gpxRaw: result.gpxRaw, segmentCount: result.segmentCount })
+      setStartDateInput('')
     } else {
       refresh()
     }
@@ -206,6 +226,26 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }
 
+  const handleConfirmStartDate = async (e: FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (!pendingMultiGpx || !startDateInput) return
+    setError('')
+    setImporting(true)
+    try {
+      await window.api.tracks.importGpxWithStartDate(
+        trip.id,
+        pendingMultiGpx.gpxRaw,
+        startDateInput
+      )
+      setPendingMultiGpx(null)
+      await refresh()
+    } catch (err) {
+      setError(cleanErrorMessage(err))
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const handleDelete = async (track: Track): Promise<void> => {
     if (
       !window.confirm(
@@ -252,7 +292,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
                   setShowAddMenu(false)
                   handleImport()
                 }}
-                disabled={!!pendingGpxRaw}
+                disabled={!!pendingGpxRaw || !!pendingMultiGpx}
               >
                 Import GPX file…
               </button>
@@ -313,6 +353,33 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
               Import
             </button>
             <button type="button" onClick={() => setPendingGpxRaw(null)} disabled={importing}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {pendingMultiGpx && (
+        <form className="date-prompt" onSubmit={handleConfirmStartDate}>
+          <label htmlFor="track-start-date-input">
+            This GPX file contains {pendingMultiGpx.segmentCount} separate track segments with no
+            timestamps of their own — it&apos;ll become {pendingMultiGpx.segmentCount} tracks. What
+            date did the first one start? Each later segment is dated one day after the one before
+            it.
+          </label>
+          <div className="date-prompt-controls">
+            <input
+              id="track-start-date-input"
+              type="date"
+              value={startDateInput}
+              onChange={(e) => setStartDateInput(e.target.value)}
+              required
+              autoFocus
+            />
+            <button type="submit" disabled={importing}>
+              Import
+            </button>
+            <button type="button" onClick={() => setPendingMultiGpx(null)} disabled={importing}>
               Cancel
             </button>
           </div>

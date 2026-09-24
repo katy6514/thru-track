@@ -26,7 +26,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.name).toBe('Day 1')
     expect(result.points).toEqual([
@@ -55,7 +55,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.points).toHaveLength(3)
     expect(result.points.map((p) => p.timestamp)).toEqual([
@@ -73,7 +73,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.points.map((p) => p.timestamp)).toEqual([
       '2026-07-01T14:00:00Z',
@@ -89,7 +89,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.name).toBe('20260701140000')
   })
@@ -101,7 +101,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.points[0].elevation).toBeNull()
   })
@@ -133,7 +133,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.points).toEqual([
       { lat: 46.85, lng: -121.75, elevation: 1200, timestamp: null },
@@ -150,7 +150,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.points.map((p) => p.lat)).toEqual([3, 1, 2])
   })
@@ -165,7 +165,7 @@ describe('parseGpx', () => {
       </trkseg>
     `)
 
-    const result = parseGpx(xml)
+    const result = parseGpx(xml)[0]
 
     expect(result.points.every((p) => p.timestamp === null)).toBe(true)
   })

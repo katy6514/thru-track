@@ -6,6 +6,7 @@ import type {
   TrackPoint,
   Entry,
   GpxImportNeedsDate,
+  GpxImportNeedsStartDate,
   JournalNote,
   Photo,
   PendingPhoto,
@@ -26,10 +27,14 @@ const api = {
   },
   tracks: {
     list: (tripId: number): Promise<Track[]> => ipcRenderer.invoke('tracks:list', tripId),
-    importGpx: (tripId: number): Promise<Track | GpxImportNeedsDate | null> =>
+    importGpx: (
+      tripId: number
+    ): Promise<Track[] | GpxImportNeedsDate | GpxImportNeedsStartDate | null> =>
       ipcRenderer.invoke('tracks:importGpx', tripId),
-    importGpxWithDate: (tripId: number, gpxRaw: string, date: string): Promise<Track> =>
+    importGpxWithDate: (tripId: number, gpxRaw: string, date: string): Promise<Track[]> =>
       ipcRenderer.invoke('tracks:importGpxWithDate', tripId, gpxRaw, date),
+    importGpxWithStartDate: (tripId: number, gpxRaw: string, startDate: string): Promise<Track[]> =>
+      ipcRenderer.invoke('tracks:importGpxWithStartDate', tripId, gpxRaw, startDate),
     getPoints: (trackId: number): Promise<TrackPoint[]> =>
       ipcRenderer.invoke('tracks:getPoints', trackId),
     delete: (trackId: number): Promise<void> => ipcRenderer.invoke('tracks:delete', trackId)
@@ -86,9 +91,13 @@ const api = {
     start: (tripId: number): Promise<{ url: string; qrDataUri: string }> =>
       ipcRenderer.invoke('gpxUpload:start', tripId),
     stop: (): Promise<void> => ipcRenderer.invoke('gpxUpload:stop'),
-    onReceived: (callback: (result: Track | GpxImportNeedsDate) => void): (() => void) => {
-      const listener = (_event: IpcRendererEvent, result: Track | GpxImportNeedsDate): void =>
-        callback(result)
+    onReceived: (
+      callback: (result: Track[] | GpxImportNeedsDate | GpxImportNeedsStartDate) => void
+    ): (() => void) => {
+      const listener = (
+        _event: IpcRendererEvent,
+        result: Track[] | GpxImportNeedsDate | GpxImportNeedsStartDate
+      ): void => callback(result)
       ipcRenderer.on('gpxUpload:received', listener)
       return () => ipcRenderer.removeListener('gpxUpload:received', listener)
     },

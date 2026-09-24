@@ -5,6 +5,7 @@ import type {
   TrackPoint,
   Entry,
   GpxImportNeedsDate,
+  GpxImportNeedsStartDate,
   JournalNote,
   Photo,
   PendingPhoto,
@@ -23,8 +24,11 @@ interface Api {
   }
   tracks: {
     list: (tripId: number) => Promise<Track[]>
-    importGpx: (tripId: number) => Promise<Track | GpxImportNeedsDate | null>
-    importGpxWithDate: (tripId: number, gpxRaw: string, date: string) => Promise<Track>
+    importGpx: (
+      tripId: number
+    ) => Promise<Track[] | GpxImportNeedsDate | GpxImportNeedsStartDate | null>
+    importGpxWithDate: (tripId: number, gpxRaw: string, date: string) => Promise<Track[]>
+    importGpxWithStartDate: (tripId: number, gpxRaw: string, startDate: string) => Promise<Track[]>
     getPoints: (trackId: number) => Promise<TrackPoint[]>
     delete: (trackId: number) => Promise<void>
   }
@@ -61,7 +65,9 @@ interface Api {
   gpxUpload: {
     start: (tripId: number) => Promise<{ url: string; qrDataUri: string }>
     stop: () => Promise<void>
-    onReceived: (callback: (result: Track | GpxImportNeedsDate) => void) => () => void
+    onReceived: (
+      callback: (result: Track[] | GpxImportNeedsDate | GpxImportNeedsStartDate) => void
+    ) => () => void
     onError: (callback: (message: string) => void) => () => void
   }
 }

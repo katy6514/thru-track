@@ -1,7 +1,24 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
+import type { Track } from '../shared/types'
 import { migrate } from './db'
-import { Repository, DateRequiredError, inferDateFromFilename } from './repository'
+import {
+  Repository,
+  DateRequiredError,
+  MultiDateRequiredError,
+  inferDateFromFilename
+} from './repository'
+
+// Every test below imports a single-<trk> GPX file and expects the one Track that makes — the
+// multi-<trk> (several tracks per import) case is covered separately, in its own describe block.
+function importOneTrack(
+  repo: Repository,
+  tripId: number,
+  gpxRaw: string,
+  options?: { filename?: string; date?: string; startDate?: string }
+): Track {
+  return repo.importGpxTrack(tripId, gpxRaw, options)[0]
+}
 
 describe('Repository trip CRUD', () => {
   let repo: Repository
@@ -83,7 +100,7 @@ describe('Repository track import', () => {
   })
 
   it('imports a GPX file into a track with its points', () => {
-    const track = repo.importGpxTrack(tripId, sampleGpx())
+    const track = importOneTrack(repo, tripId, sampleGpx())
 
     expect(track.tripId).toBe(tripId)
     expect(track.name).toBe('Day 1')
@@ -97,16 +114,18 @@ describe('Repository track import', () => {
   })
 
   it('falls back to the track date as the name when GPX has no <name>', () => {
-    const track = repo.importGpxTrack(tripId, sampleGpx({ name: '' }))
+    const track = importOneTrack(repo, tripId, sampleGpx({ name: '' }))
     expect(track.name).toBe('2026-07-01')
   })
 
   it('lists tracks for a trip, oldest date first', () => {
-    repo.importGpxTrack(
+    importOneTrack(
+      repo,
       tripId,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-05T14:00:00Z' }] })
     )
-    repo.importGpxTrack(
+    importOneTrack(
+      repo,
       tripId,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-01T14:00:00Z' }] })
     )
@@ -116,17 +135,17 @@ describe('Repository track import', () => {
 
   it('does not list tracks belonging to a different trip', () => {
     const otherTripId = repo.createTrip('Other Trip').id
-    repo.importGpxTrack(otherTripId, sampleGpx())
+    importOneTrack(repo, otherTripId, sampleGpx())
     expect(repo.listTracksForTrip(tripId)).toEqual([])
   })
 
   it('propagates a clear error for malformed GPX without creating a track', () => {
-    expect(() => repo.importGpxTrack(tripId, 'not gpx at all')).toThrow()
+    expect(() => importOneTrack(repo, tripId, 'not gpx at all')).toThrow()
     expect(repo.listTracksForTrip(tripId)).toEqual([])
   })
 
   it('throws when importing a track into a trip that does not exist', () => {
-    expect(() => repo.importGpxTrack(999, sampleGpx())).toThrow()
+    expect(() => importOneTrack(repo, 999, sampleGpx())).toThrow()
   })
 })
 
@@ -135,6 +154,22 @@ function timelessGpx(name = 'Retraced Route'): string {
     <trkpt lat="46.85" lon="-121.75"></trkpt>
     <trkpt lat="46.86" lon="-121.76"></trkpt>
   </trkseg></trk></gpx>`
+}
+
+// A single file holding several <trk> elements — e.g. a whole trail's worth of legs from one
+// CalTopo planning export. Each entry becomes its own <trk>, timestamped if `time` is given.
+function multiTrkGpx(
+  segments: { name: string; lat: string; lon: string; time?: string }[]
+): string {
+  const trks = segments
+    .map(
+      (s) =>
+        `<trk><name>${s.name}</name><trkseg><trkpt lat="${s.lat}" lon="${s.lon}">${
+          s.time ? `<time>${s.time}</time>` : ''
+        }</trkpt></trkseg></trk>`
+    )
+    .join('')
+  return `<?xml version="1.0"?><gpx>${trks}</gpx>`
 }
 
 describe('inferDateFromFilename', () => {
@@ -171,18 +206,20 @@ describe('Repository timeless track import', () => {
   })
 
   it('imports a timeless track using a date inferred from the filename', () => {
-    const track = repo.importGpxTrack(tripId, timelessGpx(), { filename: '2026-07-01-caltopo.gpx' })
+    const track = importOneTrack(repo, tripId, timelessGpx(), {
+      filename: '2026-07-01-caltopo.gpx'
+    })
     expect(track.date).toBe('2026-07-01')
     expect(track.name).toBe('Retraced Route')
   })
 
   it('imports a timeless track using an explicit date override', () => {
-    const track = repo.importGpxTrack(tripId, timelessGpx(), { date: '2026-07-04' })
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-04' })
     expect(track.date).toBe('2026-07-04')
   })
 
   it('an explicit date override wins over filename inference', () => {
-    const track = repo.importGpxTrack(tripId, timelessGpx(), {
+    const track = importOneTrack(repo, tripId, timelessGpx(), {
       filename: '2026-07-01-caltopo.gpx',
       date: '2026-07-09'
     })
@@ -190,15 +227,15 @@ describe('Repository timeless track import', () => {
   })
 
   it('throws DateRequiredError when no date can be determined at all', () => {
-    expect(() => repo.importGpxTrack(tripId, timelessGpx())).toThrow(DateRequiredError)
-    expect(() => repo.importGpxTrack(tripId, timelessGpx(), { filename: 'Untitled.gpx' })).toThrow(
+    expect(() => importOneTrack(repo, tripId, timelessGpx())).toThrow(DateRequiredError)
+    expect(() => importOneTrack(repo, tripId, timelessGpx(), { filename: 'Untitled.gpx' })).toThrow(
       DateRequiredError
     )
     expect(repo.listTracksForTrip(tripId)).toEqual([])
   })
 
   it('stores timeless track points with a null timestamp, preserving file order', () => {
-    const track = repo.importGpxTrack(tripId, timelessGpx(), { date: '2026-07-01' })
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
     const points = repo.getTrackPoints(track.id)
     expect(points).toEqual([
       { lat: 46.85, lng: -121.75, elevation: null, timestamp: null },
@@ -207,8 +244,108 @@ describe('Repository timeless track import', () => {
   })
 
   it("a live-timestamped track's own GPS time wins even if a date override is also passed", () => {
-    const track = repo.importGpxTrack(tripId, sampleGpx(), { date: '1999-01-01' })
+    const track = importOneTrack(repo, tripId, sampleGpx(), { date: '1999-01-01' })
     expect(track.date).toBe('2026-07-01')
+  })
+})
+
+describe('Repository multi-<trk> GPX import', () => {
+  let db: Database.Database
+  let repo: Repository
+  let tripId: number
+
+  beforeEach(() => {
+    db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    tripId = repo.createTrip('PCT 2026').id
+  })
+
+  it('imports one track per <trk>, each keeping its own name and points', () => {
+    const gpx = multiTrkGpx([
+      { name: 'Leg A', lat: '1', lon: '1', time: '2026-07-01T14:00:00Z' },
+      { name: 'Leg B', lat: '2', lon: '2', time: '2026-07-02T14:00:00Z' }
+    ])
+    const tracks = repo.importGpxTrack(tripId, gpx)
+    expect(tracks.map((t) => t.name)).toEqual(['Leg A', 'Leg B'])
+    expect(tracks.map((t) => t.date)).toEqual(['2026-07-01', '2026-07-02'])
+    expect(repo.listTracksForTrip(tripId)).toHaveLength(2)
+  })
+
+  it('needs no date prompt at all when every segment already has its own timestamp', () => {
+    const gpx = multiTrkGpx([
+      { name: '1', lat: '1', lon: '1', time: '2026-07-01T14:00:00Z' },
+      { name: '2', lat: '2', lon: '2', time: '2026-07-02T14:00:00Z' }
+    ])
+    expect(() => repo.importGpxTrack(tripId, gpx)).not.toThrow()
+  })
+
+  it('throws MultiDateRequiredError, counting only the untimed segments, when some are untimed', () => {
+    const gpx = multiTrkGpx([
+      { name: '1', lat: '1', lon: '1', time: '2026-07-01T14:00:00Z' }, // already timed
+      { name: '2', lat: '2', lon: '2' }, // untimed
+      { name: '3', lat: '3', lon: '3' } // untimed
+    ])
+    try {
+      repo.importGpxTrack(tripId, gpx)
+      expect.fail('expected MultiDateRequiredError')
+    } catch (err) {
+      expect(err).toBeInstanceOf(MultiDateRequiredError)
+      expect((err as MultiDateRequiredError).segmentCount).toBe(2)
+    }
+    expect(repo.listTracksForTrip(tripId)).toEqual([])
+  })
+
+  it('dates untimed segments sequentially from startDate, in file order for non-numeric names', () => {
+    const gpx = multiTrkGpx([
+      { name: 'Glacier leg', lat: '1', lon: '1' },
+      { name: 'Valley leg', lat: '2', lon: '2' },
+      { name: 'Summit leg', lat: '3', lon: '3' }
+    ])
+    const tracks = repo.importGpxTrack(tripId, gpx, { startDate: '2026-06-01' })
+    expect(tracks.map((t) => t.name)).toEqual(['Glacier leg', 'Valley leg', 'Summit leg'])
+    expect(tracks.map((t) => t.date)).toEqual(['2026-06-01', '2026-06-02', '2026-06-03'])
+  })
+
+  it('dates untimed segments by numeric name order, not file order, when every name is a number', () => {
+    // Mirrors a real CalTopo multi-leg export: <trk> elements aren't stored in leg order, but
+    // every leg is named with its own leg number.
+    const gpx = multiTrkGpx([
+      { name: '3', lat: '3', lon: '3' },
+      { name: '1', lat: '1', lon: '1' },
+      { name: '2', lat: '2', lon: '2' }
+    ])
+    const tracks = repo.importGpxTrack(tripId, gpx, { startDate: '2026-06-01' })
+    const byName = new Map(tracks.map((t) => [t.name, t.date]))
+    expect(byName.get('1')).toBe('2026-06-01')
+    expect(byName.get('2')).toBe('2026-06-02')
+    expect(byName.get('3')).toBe('2026-06-03')
+  })
+
+  it('leaves an already-timed segment on its own date when sequencing the rest', () => {
+    const gpx = multiTrkGpx([
+      { name: '1', lat: '1', lon: '1' }, // untimed, needs sequencing
+      { name: '2', lat: '2', lon: '2', time: '2020-01-01T00:00:00Z' }, // already timed, kept as-is
+      { name: '3', lat: '3', lon: '3' } // untimed, needs sequencing
+    ])
+    const tracks = repo.importGpxTrack(tripId, gpx, { startDate: '2026-06-01' })
+    const byName = new Map(tracks.map((t) => [t.name, t.date]))
+    expect(byName.get('2')).toBe('2020-01-01')
+    expect(byName.get('1')).toBe('2026-06-01')
+    expect(byName.get('3')).toBe('2026-06-02')
+  })
+
+  it('gives each resulting track its own gpx_raw instead of repeating the whole source file', () => {
+    const gpx = multiTrkGpx([
+      { name: 'Leg A', lat: '1', lon: '1', time: '2026-07-01T14:00:00Z' },
+      { name: 'Leg B', lat: '2', lon: '2', time: '2026-07-02T14:00:00Z' }
+    ])
+    const tracks = repo.importGpxTrack(tripId, gpx)
+    const row = db.prepare('SELECT gpx_raw FROM tracks WHERE id = ?').get(tracks[0].id) as {
+      gpx_raw: string
+    }
+    expect(row.gpx_raw).toContain('Leg A')
+    expect(row.gpx_raw).not.toContain('Leg B')
   })
 })
 
@@ -221,7 +358,7 @@ describe('Repository journal entries', () => {
     migrate(db)
     repo = new Repository(db)
     const tripId = repo.createTrip('PCT 2026').id
-    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+    trackId = importOneTrack(repo, tripId, sampleGpx()).id
   })
 
   it('returns null for a track with no entry yet', () => {
@@ -254,7 +391,8 @@ describe('Repository journal entries', () => {
   })
 
   it('keeps entries for different tracks independent', () => {
-    const otherTrackId = repo.importGpxTrack(
+    const otherTrackId = importOneTrack(
+      repo,
       repo.createTrip('Other Trip').id,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
     ).id
@@ -284,7 +422,7 @@ describe('Repository journal notes', () => {
     migrate(db)
     repo = new Repository(db)
     const tripId = repo.createTrip('PCT 2026').id
-    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+    trackId = importOneTrack(repo, tripId, sampleGpx()).id
   })
 
   it('returns an empty list for a track with no notes yet', () => {
@@ -324,7 +462,8 @@ describe('Repository journal notes', () => {
   })
 
   it('does not list notes belonging to a different track', () => {
-    const otherTrackId = repo.importGpxTrack(
+    const otherTrackId = importOneTrack(
+      repo,
       repo.createTrip('Other Trip').id,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
     ).id
@@ -352,7 +491,7 @@ describe('Repository photos', () => {
     migrate(db)
     repo = new Repository(db)
     const tripId = repo.createTrip('PCT 2026').id
-    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+    trackId = importOneTrack(repo, tripId, sampleGpx()).id
   })
 
   it('returns an empty list for a track with no photos yet', () => {
@@ -393,7 +532,8 @@ describe('Repository photos', () => {
   })
 
   it('does not list photos belonging to a different track', () => {
-    const otherTrackId = repo.importGpxTrack(
+    const otherTrackId = importOneTrack(
+      repo,
       repo.createTrip('Other Trip').id,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
     ).id
@@ -429,7 +569,8 @@ describe('Repository photos', () => {
   })
 
   it('scopes a content hash check to the track, not globally', () => {
-    const otherTrackId = repo.importGpxTrack(
+    const otherTrackId = importOneTrack(
+      repo,
       repo.createTrip('Other Trip').id,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
     ).id
@@ -458,7 +599,7 @@ describe('Repository messages', () => {
     migrate(db)
     repo = new Repository(db)
     const tripId = repo.createTrip('PCT 2026').id
-    trackId = repo.importGpxTrack(tripId, sampleGpx()).id
+    trackId = importOneTrack(repo, tripId, sampleGpx()).id
   })
 
   it('returns an empty list for a track with no messages yet', () => {
@@ -497,7 +638,8 @@ describe('Repository messages', () => {
   })
 
   it('does not list messages belonging to a different track', () => {
-    const otherTrackId = repo.importGpxTrack(
+    const otherTrackId = importOneTrack(
+      repo,
       repo.createTrip('Other Trip').id,
       sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
     ).id
@@ -505,13 +647,17 @@ describe('Repository messages', () => {
     repo.importInreachMessages(
       trackId,
       sampleInreachCsv({
-        rows: [{ time: '2026-07-01T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'For track one' }]
+        rows: [
+          { time: '2026-07-01T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'For track one' }
+        ]
       })
     )
     repo.importInreachMessages(
       otherTrackId,
       sampleInreachCsv({
-        rows: [{ time: '2026-07-02T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'For track two' }]
+        rows: [
+          { time: '2026-07-02T14:00:00Z', lat: '46.85', lng: '-121.75', text: 'For track two' }
+        ]
       })
     )
 
@@ -541,8 +687,11 @@ describe('Repository cascade deletion', () => {
 
   // Builds a fully-populated track (points come from the GPX import itself) plus one of every
   // child row type this track owns: an entry, a journal note, two photos, and a message.
-  function buildFullTrack(tripId: number, label: string): { trackId: number; photoPaths: string[] } {
-    const track = repo.importGpxTrack(tripId, sampleGpx({ name: `${label} track` }))
+  function buildFullTrack(
+    tripId: number,
+    label: string
+  ): { trackId: number; photoPaths: string[] } {
+    const track = importOneTrack(repo, tripId, sampleGpx({ name: `${label} track` }))
     repo.saveEntry(track.id, `${label} entry text`)
     repo.createNote(track.id, `${label} note`, '2026-07-01T14:00:30Z')
     const photoA = repo.createPhoto(track.id, `/managed/${label}-a.jpg`, null, null, null, null)

@@ -29,6 +29,17 @@ export interface GpxImportNeedsDate {
   gpxRaw: string
 }
 
+// Returned when the GPX file holds several <trk> segments (e.g. a whole trail's worth of legs
+// exported from CalTopo as one file) and more than one of them has no timestamp of its own — the
+// caller must re-submit with a single start date, which the untimed segments are then dated from
+// sequentially, one calendar day apart. segmentCount is the number of segments (not just the
+// untimed ones) so the prompt can tell the hiker how many tracks this file is about to become.
+export interface GpxImportNeedsStartDate {
+  needsStartDate: true
+  gpxRaw: string
+  segmentCount: number
+}
+
 // One plain-text journal entry per track (v1 is plain text only, no markdown/rich text).
 export interface Entry {
   id: number

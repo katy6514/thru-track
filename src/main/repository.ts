@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { Trip, Track, TrackPoint, Entry, JournalNote, Photo, Message } from '../shared/types'
-import { parseGpx } from './gpxParser'
+import { parseGpx, buildGpx, type ParsedGpxTrack } from './gpxParser'
 import { parseInreachCsv } from './inreachCsvParser'
 
 interface TripRow {
@@ -33,6 +33,17 @@ interface TrackPointRow {
 // prompt the hiker for a date and retry with an explicit override.
 export class DateRequiredError extends Error {}
 
+// Thrown when a GPX file holds several <trk> segments (e.g. a whole trail's worth of planned
+// legs exported from CalTopo as one file) and more than one of them has no timestamp of its own
+// — a single date override wouldn't make sense for several distinct days, so the caller must
+// instead prompt for a start date and retry via importGpxTrack's `startDate` option, which dates
+// the untimed segments sequentially from there.
+export class MultiDateRequiredError extends Error {
+  constructor(public readonly segmentCount: number) {
+    super(`${segmentCount} of this GPX file's track segments have no timestamp of their own`)
+  }
+}
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 function isPlausibleDate(year: number, month: number, day: number): boolean {
@@ -63,6 +74,31 @@ export function inferDateFromFilename(filename: string): string | null {
   }
 
   return null
+}
+
+// Local (not UTC) date-component construction avoids the classic off-by-one from parsing a plain
+// "YYYY-MM-DD" as UTC midnight — same reasoning as the renderer's own formatTrackDate.
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+// When several of a multi-<trk> file's segments need a sequential date assigned (see
+// MultiDateRequiredError), this decides what order to assign them in. CalTopo's own multi-leg
+// exports name each <trk> with its leg number ("1", "2", … "91") but don't necessarily store
+// them in that order — so when every segment needing a date has a plain numeric name, they're
+// ordered by that number instead of file order, matching what the numbering actually means. A
+// file where even one such segment has a non-numeric name falls back to file order entirely
+// (rather than partially reordering), since a mix has no well-defined "correct" order to guess at.
+function orderForDateSequencing(segments: ParsedGpxTrack[]): ParsedGpxTrack[] {
+  const allNumericallyNamed = segments.every(
+    (s) => s.name !== null && s.name.trim() !== '' && Number.isFinite(Number(s.name))
+  )
+  if (!allNumericallyNamed) return segments
+  return [...segments].sort((a, b) => Number(a.name) - Number(b.name))
 }
 
 interface EntryRow {
@@ -263,33 +299,59 @@ export class Repository {
     })()
   }
 
+  // A GPX file usually holds a single <trk> (one recorded/traced day) and becomes one Track, but
+  // a planning export can hold many — see parseGpx's doc comment — and becomes one Track per
+  // segment in a single call. `options.date` resolves a single-<trk> file's date exactly as
+  // before (unchanged behavior for the overwhelmingly common case); `options.startDate` instead
+  // dates a multi-segment file's untimed segments sequentially, one calendar day apart, in
+  // whatever order orderForDateSequencing decides (see its own doc comment).
   importGpxTrack(
     tripId: number,
     gpxRaw: string,
-    options: { filename?: string; date?: string } = {}
-  ): Track {
-    const parsed = parseGpx(gpxRaw)
-    const firstTimestamp = parsed.points[0].timestamp
+    options: { filename?: string; date?: string; startDate?: string } = {}
+  ): Track[] {
+    const segments = parseGpx(gpxRaw)
 
-    let date: string
-    if (firstTimestamp !== null) {
-      // A live-recorded track's own GPS time is authoritative — a filename/override is ignored.
-      date = firstTimestamp.slice(0, 10)
-    } else if (options.date && ISO_DATE.test(options.date)) {
-      date = options.date
-    } else {
-      const inferred = options.filename ? inferDateFromFilename(options.filename) : null
-      if (!inferred) {
-        throw new DateRequiredError(
-          'This GPX file has no timestamps and no date could be inferred from its filename'
-        )
+    const dates: (string | null)[] = segments.map((segment) => {
+      const firstTimestamp = segment.points[0].timestamp
+      // A live-recorded segment's own GPS time is authoritative — a filename/override is ignored.
+      return firstTimestamp !== null ? firstTimestamp.slice(0, 10) : null
+    })
+
+    if (segments.length === 1) {
+      // Exactly the single-track import path this always used to be: a filename-inferred date or
+      // explicit override both still apply here, unlike the multi-segment branch below.
+      if (dates[0] === null) {
+        if (options.date && ISO_DATE.test(options.date)) {
+          dates[0] = options.date
+        } else {
+          const inferred = options.filename ? inferDateFromFilename(options.filename) : null
+          if (!inferred) {
+            throw new DateRequiredError(
+              'This GPX file has no timestamps and no date could be inferred from its filename'
+            )
+          }
+          dates[0] = inferred
+        }
       }
-      date = inferred
+    } else {
+      const needingDateIndexes = dates
+        .map((date, index) => (date === null ? index : -1))
+        .filter((index) => index !== -1)
+
+      if (needingDateIndexes.length > 0) {
+        if (!options.startDate || !ISO_DATE.test(options.startDate)) {
+          throw new MultiDateRequiredError(needingDateIndexes.length)
+        }
+        const ordered = orderForDateSequencing(needingDateIndexes.map((index) => segments[index]))
+        ordered.forEach((segment, sequenceIndex) => {
+          const originalIndex = segments.indexOf(segment)
+          dates[originalIndex] = addDaysToIsoDate(options.startDate as string, sequenceIndex)
+        })
+      }
     }
 
-    const name = parsed.name || date
     const now = new Date().toISOString()
-
     const insertTrack = this.db.prepare(
       'INSERT INTO tracks (trip_id, name, date, gpx_raw, created_at) VALUES (?, ?, ?, ?, ?)'
     )
@@ -297,16 +359,31 @@ export class Repository {
       'INSERT INTO track_points (track_id, lat, lng, elevation, timestamp) VALUES (?, ?, ?, ?, ?)'
     )
 
-    const trackId = this.db.transaction(() => {
-      const info = insertTrack.run(tripId, name, date, gpxRaw, now)
-      const id = info.lastInsertRowid
-      for (const point of parsed.points) {
-        insertPoint.run(id, point.lat, point.lng, point.elevation, point.timestamp)
-      }
-      return id
+    const trackIds = this.db.transaction(() => {
+      const ids: number[] = []
+      segments.forEach((segment, index) => {
+        const date = dates[index] as string
+        const name = segment.name || date
+        // Each track gets its own minimal, self-contained GPX (not the original file's raw text)
+        // — a multi-segment source file would otherwise have its entire text repeated once per
+        // resulting track.
+        const segmentGpxRaw = segments.length === 1 ? gpxRaw : buildGpx(segment)
+        const info = insertTrack.run(tripId, name, date, segmentGpxRaw, now)
+        const id = info.lastInsertRowid as number
+        for (const point of segment.points) {
+          insertPoint.run(id, point.lat, point.lng, point.elevation, point.timestamp)
+        }
+        ids.push(id)
+      })
+      return ids
     })()
 
-    return toTrack(this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(trackId) as TrackRow)
+    const placeholders = trackIds.map(() => '?').join(', ')
+    const rows = this.db
+      .prepare(`SELECT * FROM tracks WHERE id IN (${placeholders})`)
+      .all(...trackIds) as TrackRow[]
+    const rowsById = new Map(rows.map((row) => [row.id, row]))
+    return trackIds.map((id) => toTrack(rowsById.get(id) as TrackRow))
   }
 
   listTracksForTrip(tripId: number): Track[] {

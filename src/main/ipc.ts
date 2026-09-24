@@ -2,7 +2,7 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import { getDb, pingDb } from './db'
-import { Repository, DateRequiredError } from './repository'
+import { Repository, DateRequiredError, MultiDateRequiredError } from './repository'
 import { extractExifData } from './exifExtractor'
 import { storePhotoFile, deletePhotoFile, hashPhotoContent } from './fileStorageManager'
 import {
@@ -16,6 +16,7 @@ import type {
   Track,
   TrackPoint,
   GpxImportNeedsDate,
+  GpxImportNeedsStartDate,
   JournalNote,
   Photo,
   PendingPhoto,
@@ -63,7 +64,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'tracks:importGpx',
-    async (event, tripId: number): Promise<Track | GpxImportNeedsDate | null> => {
+    async (
+      event,
+      tripId: number
+    ): Promise<Track[] | GpxImportNeedsDate | GpxImportNeedsStartDate | null> => {
       const window = BrowserWindow.fromWebContents(event.sender)
       if (!window) throw new Error('No window found for the requesting renderer')
       const result = await dialog.showOpenDialog(window, {
@@ -84,6 +88,12 @@ export function registerIpcHandlers(): void {
         if (err instanceof DateRequiredError) {
           return { needsDate: true, gpxRaw }
         }
+        // A multi-<trk> file (e.g. a whole trail's worth of legs from one CalTopo export) with
+        // several untimed segments — same idea, but the renderer prompts for a start date and
+        // resubmits via importGpxWithStartDate instead.
+        if (err instanceof MultiDateRequiredError) {
+          return { needsStartDate: true, gpxRaw, segmentCount: err.segmentCount }
+        }
         throw err
       }
     }
@@ -91,8 +101,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'tracks:importGpxWithDate',
-    (_event, tripId: number, gpxRaw: string, date: string): Track =>
+    (_event, tripId: number, gpxRaw: string, date: string): Track[] =>
       repository.importGpxTrack(tripId, gpxRaw, { date })
+  )
+
+  ipcMain.handle(
+    'tracks:importGpxWithStartDate',
+    (_event, tripId: number, gpxRaw: string, startDate: string): Track[] =>
+      repository.importGpxTrack(tripId, gpxRaw, { startDate })
   )
 
   // A phone on the same wifi/hotspot sends its exported GPX file straight to a short-lived local
@@ -114,15 +130,22 @@ export function registerIpcHandlers(): void {
         readFile(file.filePath, 'utf-8')
           .then((gpxRaw) => {
             try {
-              const track = repository.importGpxTrack(tripId, gpxRaw, {
+              const tracks = repository.importGpxTrack(tripId, gpxRaw, {
                 filename: file.originalName
               })
-              window?.webContents.send('gpxUpload:received', track)
+              window?.webContents.send('gpxUpload:received', tracks)
             } catch (err) {
               // Same fallback as the file-picker path above: no usable date, so hand the parsed
-              // GPX back to the renderer to prompt for one and resubmit via importGpxWithDate.
+              // GPX back to the renderer to prompt for one and resubmit via importGpxWithDate (or
+              // importGpxWithStartDate for a multi-segment file).
               if (err instanceof DateRequiredError) {
                 window?.webContents.send('gpxUpload:received', { needsDate: true, gpxRaw })
+              } else if (err instanceof MultiDateRequiredError) {
+                window?.webContents.send('gpxUpload:received', {
+                  needsStartDate: true,
+                  gpxRaw,
+                  segmentCount: err.segmentCount
+                })
               } else {
                 throw err
               }
@@ -272,7 +295,12 @@ export function registerIpcHandlers(): void {
 
     if (trackStart !== null && trackEnd !== null && photosWithTimestamp.length > 0) {
       const { offsetMinutes } = detectTimezoneOffset(trackStart, trackEnd, photosWithTimestamp)
-      return { needsOffsetConfirm: true, proposedOffsetMinutes: offsetMinutes, pending, duplicatesSkipped }
+      return {
+        needsOffsetConfirm: true,
+        proposedOffsetMinutes: offsetMinutes,
+        pending,
+        duplicatesSkipped
+      }
     }
 
     return { photos: await finalizePhotoImport(trackId, pending, 0), duplicatesSkipped }
@@ -288,7 +316,8 @@ export function registerIpcHandlers(): void {
         properties: ['openFile', 'multiSelections'],
         filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'heic', 'heif'] }]
       })
-      if (result.canceled || result.filePaths.length === 0) return { photos: [], duplicatesSkipped: 0 }
+      if (result.canceled || result.filePaths.length === 0)
+        return { photos: [], duplicatesSkipped: 0 }
       return buildPhotoImportResult(trackId, result.filePaths)
     }
   )
