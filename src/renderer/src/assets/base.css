@@ -137,6 +137,7 @@
 
 ul {
   list-style: none;
+  padding: 0;
 }
 
 /* Two-font system, same pairing used throughout the app's own docs/guide content: a geometric
