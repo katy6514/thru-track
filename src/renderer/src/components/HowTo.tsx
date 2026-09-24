@@ -128,6 +128,11 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             remove it entirely.
           </li>
         </ol>
+        <p>
+          Once a trip has a day or two imported, its own page shows an overview map — every
+          day&rsquo;s line drawn in its own color, with a matching dot next to that day&rsquo;s name
+          in the list below. Click a line on the map (or a day&rsquo;s name) to open that day.
+        </p>
         <div className="how-to-callout">
           <span className="how-to-callout-label">Heads up</span>
           <p>
@@ -179,6 +184,24 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             <a href="#reconstruction">&sect;03</a> and <a href="#photos">&sect;06</a>.
           </p>
         </div>
+        <h3>If the file has several legs planned out in it</h3>
+        <p>
+          A route planned in CalTopo (or similar) sometimes covers a whole trail as one file with
+          many separate legs inside it, rather than one file per day. Thru Track notices this and
+          creates one track per leg instead of merging them into a single giant one. If those legs
+          have no timestamps of their own, you&rsquo;ll be asked for a single start date — each leg
+          is then dated one day after the one before it, in leg-number order when every leg is
+          plainly numbered.
+        </p>
+        <div className="how-to-callout">
+          <span className="how-to-callout-label">Got the name or date wrong?</span>
+          <p>
+            Any day without a real GPS clock — a retrace, or a leg from a planning file like this
+            one — can have its name and date corrected afterward. Open it and click{' '}
+            <strong>Edit</strong> next to its title. A live-recorded day&rsquo;s name and date come
+            from its own GPS data, so that option isn&rsquo;t offered for one of those.
+          </p>
+        </div>
       </section>
 
       <section className="how-to-chapter" id="reconstruction">
@@ -196,6 +219,10 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
           paused for a stretch (lunch, an overnight, a dead battery), that gap shows up as a real
           break in the line. The app won&rsquo;t draw a straight &ldquo;teleport&rdquo; across time
           it doesn&rsquo;t have data for.
+        </p>
+        <p>
+          Above the map, a stats line shows the day&rsquo;s distance, start and end time (on a timed
+          day), and total elevation gain when the file has elevation data at all.
         </p>
         <h3>The timeline</h3>
         <p>
@@ -216,6 +243,14 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
           other on a full-day timeline — nothing to click individually. When items are that close
           together, they combine into one numbered badge instead. Click it to pick which one you
           meant from a short list.
+        </p>
+        <h3>Items from before or after the recording</h3>
+        <p>
+          An evening photo from camp, taken after you stopped recording, has no GPS position to
+          place it at — forcing it onto the slider would either mis-time it or push it off the end
+          entirely. Instead it gets its own small <strong>&#8249;</strong>/<strong>&#8250;</strong>{' '}
+          badge at whichever end of the timeline it belongs on, showing how many items fall outside
+          the recorded day. Click one to pick from that list, same as a cluster.
         </p>
         <h3>Timeless days</h3>
         <p>
@@ -292,9 +327,9 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         <div className="how-to-callout how-to-callout-note">
           <span className="how-to-callout-label">The side panel</span>
           <p>
-            Clicking any item — a note, a photo, a message — opens a panel <em>beside</em> the map,
-            not over it. The reconstruction stays visible the whole time you&rsquo;re reading or
-            writing.
+            Clicking a note or a message opens a panel <em>beside</em> the map, not over it — the
+            map stays fully visible the whole time you&rsquo;re reading. A photo works a little
+            differently; see <a href="#photos">&sect;06</a>.
           </p>
         </div>
       </section>
@@ -341,14 +376,22 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             <span className="how-to-swatch how-to-swatch-photo" />
             green square
           </span>{' '}
-          on the timeline and a green pin on the map. Click either to see the actual image in the
-          side panel.
+          on the timeline and a green pin on the map. Click either to open the actual image — it
+          appears over the right half of the map (not beside it, like a note or message), and the
+          map pans and its pin pulses so you can still see roughly where the shot was taken while
+          you look at it.
         </p>
         <p>
           A photo with no GPS of its own <em>and</em> no timeline to estimate from (a timeless day,
           or one with no EXIF time at all) can&rsquo;t be placed on the map — but it&rsquo;s never
           silently dropped. It shows up in a plain photo list underneath, same as everything else
           that has nowhere more specific to go.
+        </p>
+        <p>
+          Re-importing a photo you already added for that day is caught and skipped automatically
+          (compared by its actual file content, not just the filename) — you&rsquo;ll see a note
+          saying how many were skipped, so a batch that looks smaller than you picked isn&rsquo;t a
+          mystery.
         </p>
       </section>
 
