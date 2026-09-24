@@ -300,6 +300,27 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }
 
+  // Shared by both the state accordion and the plain single-state fallback list below, so a
+  // track row looks and behaves identically either way.
+  const renderTrackRow = (track: Track): React.JSX.Element => (
+    <li key={track.id} className="track-row">
+      <span
+        className="track-color-swatch"
+        style={{ backgroundColor: trackColor(trackIndexById.get(track.id) ?? 0) }}
+        aria-hidden="true"
+      />
+      <button type="button" className="track-name" onClick={() => setSelectedTrack(track)}>
+        {track.name}
+      </button>
+      <span className="track-date">{track.date}</span>
+      <div className="track-actions">
+        <button type="button" onClick={() => handleDelete(track)}>
+          Delete
+        </button>
+      </div>
+    </li>
+  )
+
   if (selectedTrack) {
     return (
       <TrackDetail
@@ -443,53 +464,34 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
           </div>
 
           <div className="track-list-side-col">
-            <div className="track-state-accordion">
-              {stateGroups.map((group, groupIndex) => {
-                const isOpen = openState === groupIndex
-                return (
-                  <div key={groupIndex} className="track-state-group">
-                    <button
-                      type="button"
-                      className="track-state-header"
-                      onClick={() => setOpenState(isOpen ? null : groupIndex)}
-                      aria-expanded={isOpen}
-                    >
-                      <span className="track-state-chevron">{isOpen ? '▾' : '▸'}</span>
-                      <span className="track-state-name">{group.label}</span>
-                      <span className="track-state-count">{group.tracks.length}</span>
-                    </button>
-                    {isOpen && (
-                      <ul className="tracks">
-                        {group.tracks.map((track) => (
-                          <li key={track.id} className="track-row">
-                            <span
-                              className="track-color-swatch"
-                              style={{
-                                backgroundColor: trackColor(trackIndexById.get(track.id) ?? 0)
-                              }}
-                              aria-hidden="true"
-                            />
-                            <button
-                              type="button"
-                              className="track-name"
-                              onClick={() => setSelectedTrack(track)}
-                            >
-                              {track.name}
-                            </button>
-                            <span className="track-date">{track.date}</span>
-                            <div className="track-actions">
-                              <button type="button" onClick={() => handleDelete(track)}>
-                                Delete
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            {stateGroups.length > 1 ? (
+              <div className="track-state-accordion">
+                {stateGroups.map((group, groupIndex) => {
+                  const isOpen = openState === groupIndex
+                  return (
+                    <div key={groupIndex} className="track-state-group">
+                      <button
+                        type="button"
+                        className="track-state-header"
+                        onClick={() => setOpenState(isOpen ? null : groupIndex)}
+                        aria-expanded={isOpen}
+                      >
+                        <span className="track-state-chevron">{isOpen ? '▾' : '▸'}</span>
+                        <span className="track-state-name">{group.label}</span>
+                        <span className="track-state-count">{group.tracks.length}</span>
+                      </button>
+                      {isOpen && <ul className="tracks">{group.tracks.map(renderTrackRow)}</ul>}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              // Almost every trip stays within one state — the accordion only earns its keep
+              // once there's more than one group to pick between, so a single-state trip (or one
+              // where every track landed in "Other") just lists its tracks plainly, exactly as it
+              // did before state grouping existed.
+              <ul className="tracks">{tracks.map(renderTrackRow)}</ul>
+            )}
           </div>
         </div>
       )}
