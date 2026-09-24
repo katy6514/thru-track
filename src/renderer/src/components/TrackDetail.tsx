@@ -26,6 +26,7 @@ import {
   type TimelineCluster
 } from '../../../shared/clusterTimelineItems'
 import SidePanel from './SidePanel'
+import PhotoSlideshow from './PhotoSlideshow'
 
 // Leaflet's default marker icon references relative image paths that resolve fine when its CSS
 // is served as-is, but break once a bundler (Vite here) rewrites asset URLs — the icon silently
@@ -877,151 +878,160 @@ function TrackDetail({
           <button type="button" className="back-link" onClick={onBack}>
             &larr; Back to tracks
           </button>
-
-          <div className="dropdown-menu" ref={addDataMenuRef}>
-            <button
-              type="button"
-              onClick={() => setShowAddDataMenu((v) => !v)}
-              disabled={
-                importingPhotos || !!pendingOffsetImport || importingMessages || startingPhoneUpload
-              }
-            >
-              {importingPhotos
-                ? 'Importing photos…'
-                : importingMessages
-                  ? 'Importing…'
-                  : startingPhoneUpload
-                    ? 'Starting…'
-                    : 'Add data ▾'}
-            </button>
-            {showAddDataMenu && (
-              <div className="dropdown-menu-options dropdown-menu-options-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    journalPreviewRef.current?.scrollIntoView({
-                      behavior: 'smooth',
-                      block: 'center'
-                    })
-                    handleStartEditingJournal()
-                  }}
-                >
-                  Jump to journal entry
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    handleImportPhotos()
-                  }}
-                >
-                  Import photos…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    handleImportMessages()
-                  }}
-                >
-                  Import messages (CSV)…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    handleStartPhoneUpload()
-                  }}
-                  disabled={!!phoneUploadSession}
-                >
-                  Upload photos from phone…
-                </button>
-              </div>
-            )}
-          </div>
         </div>
 
-        {editingTrackInfo ? (
-          <form className="track-info-edit" onSubmit={handleSaveTrackInfo}>
-            <label htmlFor="track-name-input">Name</label>
-            <input
-              id="track-name-input"
-              type="text"
-              className="track-info-edit-name"
-              value={trackNameInput}
-              onChange={(e) => setTrackNameInput(e.target.value)}
-              required
-              autoFocus
-            />
-            <label htmlFor="track-date-edit-input">Date</label>
-            <div className="track-info-edit-controls">
-              <input
-                id="track-date-edit-input"
-                type="date"
-                value={trackDateInput}
-                onChange={(e) => setTrackDateInput(e.target.value)}
-                required
-              />
-              <button type="submit" disabled={savingTrackInfo}>
-                {savingTrackInfo ? 'Saving…' : 'Save'}
-              </button>
+        <div className="track-header-row">
+          <div className="track-header-info">
+            {editingTrackInfo ? (
+              <form className="track-info-edit" onSubmit={handleSaveTrackInfo}>
+                <label htmlFor="track-name-input">Name</label>
+                <input
+                  id="track-name-input"
+                  type="text"
+                  className="track-info-edit-name"
+                  value={trackNameInput}
+                  onChange={(e) => setTrackNameInput(e.target.value)}
+                  required
+                  autoFocus
+                />
+                <label htmlFor="track-date-edit-input">Date</label>
+                <div className="track-info-edit-controls">
+                  <input
+                    id="track-date-edit-input"
+                    type="date"
+                    value={trackDateInput}
+                    onChange={(e) => setTrackDateInput(e.target.value)}
+                    required
+                  />
+                  <button type="submit" disabled={savingTrackInfo}>
+                    {savingTrackInfo ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEditingTrackInfo}
+                    disabled={savingTrackInfo}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {trackInfoError && <p className="error">{trackInfoError}</p>}
+              </form>
+            ) : (
+              <>
+                <div className="track-title-row">
+                  <h1>{track.name}</h1>
+                  {points !== null && !isTimed && (
+                    <button
+                      type="button"
+                      className="track-title-edit-button"
+                      onClick={handleStartEditingTrackInfo}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                <p className="track-date">{formatTrackDate(track.date)}</p>
+              </>
+            )}
+
+            <dl className="track-stats">
+              {trackStats && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Distance</dt>
+                  <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
+                </div>
+              )}
+              {trackStartMs !== null && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Start</dt>
+                  <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
+                </div>
+              )}
+              {trackEndMs !== null && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">End</dt>
+                  <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
+                </div>
+              )}
+              {trackStats !== null && trackStats.elevationGainFeet !== null && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Elevation gain</dt>
+                  <dd className="track-stat-value">
+                    {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
+                  </dd>
+                </div>
+              )}
+            </dl>
+
+            <div className="dropdown-menu" ref={addDataMenuRef}>
               <button
                 type="button"
-                onClick={handleCancelEditingTrackInfo}
-                disabled={savingTrackInfo}
+                onClick={() => setShowAddDataMenu((v) => !v)}
+                disabled={
+                  importingPhotos ||
+                  !!pendingOffsetImport ||
+                  importingMessages ||
+                  startingPhoneUpload
+                }
               >
-                Cancel
+                {importingPhotos
+                  ? 'Importing photos…'
+                  : importingMessages
+                    ? 'Importing…'
+                    : startingPhoneUpload
+                      ? 'Starting…'
+                      : 'Add data ▾'}
               </button>
-            </div>
-            {trackInfoError && <p className="error">{trackInfoError}</p>}
-          </form>
-        ) : (
-          <>
-            <div className="track-title-row">
-              <h1>{track.name}</h1>
-              {points !== null && !isTimed && (
-                <button
-                  type="button"
-                  className="track-title-edit-button"
-                  onClick={handleStartEditingTrackInfo}
-                >
-                  Edit
-                </button>
+              {showAddDataMenu && (
+                <div className="dropdown-menu-options">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      journalPreviewRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                      })
+                      handleStartEditingJournal()
+                    }}
+                  >
+                    Jump to journal entry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      handleImportPhotos()
+                    }}
+                  >
+                    Import photos…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      handleImportMessages()
+                    }}
+                  >
+                    Import messages (CSV)…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      handleStartPhoneUpload()
+                    }}
+                    disabled={!!phoneUploadSession}
+                  >
+                    Upload photos from phone…
+                  </button>
+                </div>
               )}
             </div>
-            <p className="track-date">{formatTrackDate(track.date)}</p>
-          </>
-        )}
+          </div>
 
-        <dl className="track-stats">
-          {trackStats && (
-            <div className="track-stat">
-              <dt className="track-stat-label">Distance</dt>
-              <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
-            </div>
-          )}
-          {trackStartMs !== null && (
-            <div className="track-stat">
-              <dt className="track-stat-label">Start</dt>
-              <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
-            </div>
-          )}
-          {trackEndMs !== null && (
-            <div className="track-stat">
-              <dt className="track-stat-label">End</dt>
-              <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
-            </div>
-          )}
-          {trackStats !== null && trackStats.elevationGainFeet !== null && (
-            <div className="track-stat">
-              <dt className="track-stat-label">Elevation gain</dt>
-              <dd className="track-stat-value">
-                {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
-              </dd>
-            </div>
-          )}
-        </dl>
+          <PhotoSlideshow photos={photos} />
+        </div>
 
         {phoneUploadSession && (
           <div className="phone-upload-panel">

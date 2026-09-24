@@ -486,6 +486,48 @@ button:hover {
   font-weight: 600;
 }
 
+/* Title, date and the stats table sit to the left; the photo slideshow (PhotoSlideshow.tsx),
+   when the track has any photos at all, fills the rest of the row's width and — via the default
+   flex `stretch` cross-axis behavior — the same height as that left column, without either side
+   needing to know the other's actual height. Wraps at narrow widths rather than squeezing. */
+.track-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.track-header-info {
+  flex: 1;
+  min-width: 260px;
+}
+
+/* No min-height of its own on purpose — the row's own height (and so this element's, since
+   flex's default `stretch` cross-axis behavior makes it match its sibling) is driven entirely by
+   track-header-info's natural content height. */
+.track-photo-slideshow {
+  position: relative;
+  flex: 0 0 320px;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--color-background-soft);
+}
+
+.track-photo-slideshow-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* `contain` (not `cover`) so a photo keeps its own aspect ratio instead of being cropped to
+     match the box — every photo, portrait or landscape, ends up centered in the same spot
+     (object-position's own default) rather than filling the whole box differently each time. */
+  object-fit: contain;
+  object-position: center;
+  opacity: 0;
+  transition-property: opacity;
+  transition-timing-function: ease;
+}
+
 /* Houses the title next to its Edit button (untimed tracks only — see canEditTrackInfo in
    TrackDetail.tsx) — takes over h1's own bottom margin so the row, not the heading itself, sets
    the space before the date line beneath it. */
