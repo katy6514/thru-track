@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type {
@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/types'
 import { cleanErrorMessage } from '../cleanErrorMessage'
 import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
+import { groupTracksByState } from '../../../shared/groupTracksByState'
 import { addBaseLayers, attachClickToZoom, trackColor } from '../mapBaseLayers'
 import TrackDetail from './TrackDetail'
 
@@ -29,6 +30,12 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   // on the overview map below — keyed by track id since not every track is guaranteed to have
   // points (or to still be loading them) at any given moment.
   const [overviewPoints, setOverviewPoints] = useState<Map<number, TrackPoint[]>>(new Map())
+  // Index into stateGroups (below) of whichever group is currently expanded — at most one at a
+  // time, and collapsed (null) by default. An index rather than the group's own label, since nothing
+  // guarantees two groups never share a label (e.g. two separate, non-adjacent stretches through
+  // the same state). Reset to null whenever the trip changes (below) so switching trips never
+  // leaves a group looking open that the hiker never actually opened for this trip.
+  const [openState, setOpenState] = useState<number | null>(null)
   // Set when a GPX has no timestamps and no date could be inferred from its filename —
   // the hiker needs to supply the day this track was hiked before it's actually imported.
   const [pendingGpxRaw, setPendingGpxRaw] = useState<string | null>(null)
@@ -76,6 +83,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
 
   useEffect(() => {
     refresh()
+    setOpenState(null)
   }, [trip.id])
 
   // Fetches every listed track's own points whenever the track list changes (a fresh import, a
@@ -96,6 +104,15 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }, [tracks])
 
+  const stateGroups = useMemo(
+    () => groupTracksByState(tracks, overviewPoints),
+    [tracks, overviewPoints]
+  )
+  // Position in the full, date-sorted `tracks` array — independent of which state group a track
+  // ends up listed under — so a track's color-swatch dot always matches its own line on the
+  // overview map below, exactly as it did before grouping existed.
+  const trackIndexById = useMemo(() => new Map(tracks.map((t, i) => [t.id, i])), [tracks])
+
   // Renders (or re-renders) the overview map whenever there's fresh point data to show. Also
   // depends on `selectedTrack` even though it isn't read here: this component's own JSX (and the
   // map container div with it) only exists while `selectedTrack` is null — see the early return
@@ -114,7 +131,6 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     attachClickToZoom(map, container)
     addBaseLayers(map)
 
-    const allLatLngs: L.LatLngExpression[] = []
     tracks.forEach((track, index) => {
       const points = overviewPoints.get(track.id)
       if (!points || points.length === 0) return
@@ -125,16 +141,13 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
           .bindTooltip(track.name)
           .on('click', () => setSelectedTrack(track))
           .addTo(map)
-        allLatLngs.push(...latLngs)
       }
     })
 
-    if (allLatLngs.length > 0) {
-      map.fitBounds(L.latLngBounds(allLatLngs), { padding: [24, 24] })
-    } else {
-      map.setView([0, 0], 2)
-    }
-
+    // Camera framing (the whole trip vs. just the expanded state) is owned entirely by the
+    // dedicated effect below, which always runs right after this one on the same commit — so the
+    // freshly built map here is framed correctly before the browser ever paints it, without this
+    // effect needing to know anything about the accordion's open state itself.
     overviewMapRef.current = map
 
     return () => {
@@ -142,6 +155,30 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
       overviewMapRef.current = null
     }
   }, [tracks, overviewPoints, selectedTrack])
+
+  // Frames the overview map on whichever state group is currently expanded, or the whole trip
+  // when none is — re-fitting bounds only (the drawn lines above are untouched either way, so
+  // every day's route stays visible regardless of which group is open; only the camera moves).
+  useEffect(() => {
+    const map = overviewMapRef.current
+    if (!map) return
+
+    const group = openState !== null ? stateGroups[openState] : undefined
+    const tracksInView = group ? group.tracks : tracks
+
+    const latLngs: L.LatLngExpression[] = []
+    for (const track of tracksInView) {
+      const points = overviewPoints.get(track.id)
+      if (!points) continue
+      for (const p of points) latLngs.push([p.lat, p.lng])
+    }
+
+    if (latLngs.length > 0) {
+      map.fitBounds(L.latLngBounds(latLngs), { padding: [24, 24] })
+    } else {
+      map.setView([0, 0], 2)
+    }
+  }, [openState, stateGroups, overviewPoints, tracks])
 
   useEffect(() => {
     // A GPX-upload session is scoped to the trip it was started from — switching trips (or
@@ -406,30 +443,53 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
           </div>
 
           <div className="track-list-side-col">
-            <ul className="tracks">
-              {tracks.map((track, index) => (
-                <li key={track.id} className="track-row">
-                  <span
-                    className="track-color-swatch"
-                    style={{ backgroundColor: trackColor(index) }}
-                    aria-hidden="true"
-                  />
-                  <button
-                    type="button"
-                    className="track-name"
-                    onClick={() => setSelectedTrack(track)}
-                  >
-                    {track.name}
-                  </button>
-                  <span className="track-date">{track.date}</span>
-                  <div className="track-actions">
-                    <button type="button" onClick={() => handleDelete(track)}>
-                      Delete
+            <div className="track-state-accordion">
+              {stateGroups.map((group, groupIndex) => {
+                const isOpen = openState === groupIndex
+                return (
+                  <div key={groupIndex} className="track-state-group">
+                    <button
+                      type="button"
+                      className="track-state-header"
+                      onClick={() => setOpenState(isOpen ? null : groupIndex)}
+                      aria-expanded={isOpen}
+                    >
+                      <span className="track-state-chevron">{isOpen ? '▾' : '▸'}</span>
+                      <span className="track-state-name">{group.label}</span>
+                      <span className="track-state-count">{group.tracks.length}</span>
                     </button>
+                    {isOpen && (
+                      <ul className="tracks">
+                        {group.tracks.map((track) => (
+                          <li key={track.id} className="track-row">
+                            <span
+                              className="track-color-swatch"
+                              style={{
+                                backgroundColor: trackColor(trackIndexById.get(track.id) ?? 0)
+                              }}
+                              aria-hidden="true"
+                            />
+                            <button
+                              type="button"
+                              className="track-name"
+                              onClick={() => setSelectedTrack(track)}
+                            >
+                              {track.name}
+                            </button>
+                            <span className="track-date">{track.date}</span>
+                            <div className="track-actions">
+                              <button type="button" onClick={() => handleDelete(track)}>
+                                Delete
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
-                </li>
-              ))}
-            </ul>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

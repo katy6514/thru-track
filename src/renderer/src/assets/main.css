@@ -326,6 +326,66 @@ button:hover {
   gap: 8px;
 }
 
+/* Groups the track list by which US state each track starts in (see stateForPoint.ts) — a single
+   group open at a time, like a standard accordion, so a long trip spanning several states doesn't
+   turn into one very long undifferentiated list. */
+.track-state-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.track-state-group {
+  background-color: var(--color-background-soft);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.track-state-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.track-state-header:hover {
+  background-color: var(--color-background-mute);
+}
+
+.track-state-chevron {
+  flex: 0 0 auto;
+  width: 1em;
+  color: var(--ev-c-text-2);
+  font-size: 12px;
+}
+
+.track-state-name {
+  flex: 1;
+}
+
+.track-state-count {
+  flex: 0 0 auto;
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.track-state-group .tracks {
+  padding: 0 8px 8px;
+}
+
+.track-state-group .track-row {
+  background-color: var(--color-background-mute);
+}
+
 .track-row {
   display: flex;
   align-items: center;
