@@ -57,6 +57,11 @@ interface TrackDetailProps {
   // its own copy. Without this the header would keep showing the pre-edit name/date until the
   // hiker navigated away and back.
   onTrackUpdated: (track: Track) => void
+  // Switches the parent's selected track to the given id — used by the photo-offset prompt's
+  // "Go to <day> instead" suggestion (see suggestedTrack below) so a hiker who imported photos
+  // onto the wrong day can jump straight to the right one instead of backing out and hunting for
+  // it themselves.
+  onOpenTrack: (trackId: number) => void
 }
 
 // Debounce autosave: save AUTOSAVE_DELAY_MS after the hiker stops typing, rather than requiring
@@ -215,7 +220,12 @@ type SelectedItem =
   | { kind: 'message'; id: number }
   | null
 
-function TrackDetail({ track, onBack, onTrackUpdated }: TrackDetailProps): React.JSX.Element {
+function TrackDetail({
+  track,
+  onBack,
+  onTrackUpdated,
+  onOpenTrack
+}: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
@@ -306,6 +316,7 @@ function TrackDetail({ track, onBack, onTrackUpdated }: TrackDetailProps): React
   const [pendingOffsetImport, setPendingOffsetImport] = useState<{
     pending: PendingPhoto[]
     proposedOffsetMinutes: number
+    suggestedTrack: { trackId: number; name: string; date: string; offsetMinutes: number } | null
   } | null>(null)
   const [offsetInput, setOffsetInput] = useState('0')
 
@@ -634,7 +645,8 @@ function TrackDetail({ track, onBack, onTrackUpdated }: TrackDetailProps): React
       // adjusts) the proposed offset via handleConfirmOffset below.
       setPendingOffsetImport({
         pending: result.pending,
-        proposedOffsetMinutes: result.proposedOffsetMinutes
+        proposedOffsetMinutes: result.proposedOffsetMinutes,
+        suggestedTrack: result.suggestedTrack
       })
       setOffsetInput(String(result.proposedOffsetMinutes))
     } else if (result.photos.length > 0) {
@@ -707,6 +719,16 @@ function TrackDetail({ track, onBack, onTrackUpdated }: TrackDetailProps): React
     // Nothing was ever copied/written for this batch — discarding the pending list is the whole
     // cancellation, no IPC call needed.
     setPendingOffsetImport(null)
+  }
+
+  const handleGoToSuggestedTrack = (): void => {
+    if (!pendingOffsetImport?.suggestedTrack) return
+    // Same as handleCancelOffset: nothing was ever written for this batch, so discarding the
+    // pending list and switching tracks is the whole handler — the hiker re-imports fresh once
+    // they're actually on the right day.
+    const trackId = pendingOffsetImport.suggestedTrack.trackId
+    setPendingOffsetImport(null)
+    onOpenTrack(trackId)
   }
 
   const handleImportMessages = async (): Promise<void> => {
@@ -913,7 +935,7 @@ function TrackDetail({ track, onBack, onTrackUpdated }: TrackDetailProps): React
                   }}
                   disabled={!!phoneUploadSession}
                 >
-                  Upload from phone…
+                  Upload photos from phone…
                 </button>
               </div>
             )}
@@ -1022,6 +1044,22 @@ function TrackDetail({ track, onBack, onTrackUpdated }: TrackDetailProps): React
           </div>
         )}
         {phoneUploadError && <p className="error">{phoneUploadError}</p>}
+
+        {pendingOffsetImport?.suggestedTrack && (
+          <div className="offset-suggestion">
+            <p>
+              These photos look like a much better fit for{' '}
+              <strong>{pendingOffsetImport.suggestedTrack.name}</strong> (
+              {formatTrackDate(pendingOffsetImport.suggestedTrack.date)}) — only{' '}
+              {formatOffset(pendingOffsetImport.suggestedTrack.offsetMinutes)} off there, versus{' '}
+              {formatOffset(pendingOffsetImport.proposedOffsetMinutes)} here. Did you mean to import
+              them onto that day instead?
+            </p>
+            <button type="button" onClick={handleGoToSuggestedTrack}>
+              Go to {pendingOffsetImport.suggestedTrack.name} instead
+            </button>
+          </div>
+        )}
 
         {pendingOffsetImport && (
           <form className="offset-prompt" onSubmit={handleConfirmOffset}>

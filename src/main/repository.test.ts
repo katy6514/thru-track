@@ -383,9 +383,7 @@ describe('Repository track rename/re-date', () => {
   it('rejects renaming or re-dating a timed (live-recorded) track', () => {
     const track = importOneTrack(repo, tripId, sampleGpx())
     expect(() => repo.updateTrack(track.id, { name: 'New Name' })).toThrow(TrackNotTimelessError)
-    expect(() => repo.updateTrack(track.id, { date: '2026-08-15' })).toThrow(
-      TrackNotTimelessError
-    )
+    expect(() => repo.updateTrack(track.id, { date: '2026-08-15' })).toThrow(TrackNotTimelessError)
   })
 
   it('rejects an empty name', () => {
@@ -726,6 +724,87 @@ describe('Repository messages', () => {
 
   it('throws when importing messages for a track that does not exist', () => {
     expect(() => repo.importInreachMessages(999, sampleInreachCsv())).toThrow()
+  })
+})
+
+describe('Repository listOtherTimedTrackRangesInSameTrip', () => {
+  let repo: Repository
+  let tripId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    tripId = repo.createTrip('PCT 2026').id
+  })
+
+  it("lists every other timed track's own start/end, excluding the track asked about", () => {
+    const dayOne = importOneTrack(
+      repo,
+      tripId,
+      sampleGpx({
+        name: 'Day 1',
+        points: [
+          { lat: '46.85', lon: '-121.75', time: '2026-07-01T14:00:00Z' },
+          { lat: '46.86', lon: '-121.76', time: '2026-07-01T20:00:00Z' }
+        ]
+      })
+    )
+    const dayTwo = importOneTrack(
+      repo,
+      tripId,
+      sampleGpx({
+        name: 'Day 2',
+        points: [
+          { lat: '46.9', lon: '-121.8', time: '2026-07-02T14:00:00Z' },
+          { lat: '46.91', lon: '-121.81', time: '2026-07-02T20:00:00Z' }
+        ]
+      })
+    )
+
+    expect(repo.listOtherTimedTrackRangesInSameTrip(dayOne.id)).toEqual([
+      {
+        trackId: dayTwo.id,
+        name: 'Day 2',
+        date: '2026-07-02',
+        startIso: '2026-07-02T14:00:00Z',
+        endIso: '2026-07-02T20:00:00Z'
+      }
+    ])
+  })
+
+  it('excludes a timeless track (no non-null timestamp for MIN/MAX to aggregate)', () => {
+    const timed = importOneTrack(repo, tripId, sampleGpx({ name: 'Timed day' }))
+    importOneTrack(
+      repo,
+      tripId,
+      `<?xml version="1.0"?><gpx><trk><name>Timeless day</name><trkseg>
+        <trkpt lat="46.85" lon="-121.75"></trkpt>
+        <trkpt lat="46.86" lon="-121.76"></trkpt>
+      </trkseg></trk></gpx>`,
+      { date: '2026-07-05' }
+    )
+
+    expect(repo.listOtherTimedTrackRangesInSameTrip(timed.id)).toEqual([])
+  })
+
+  it('never includes a track from a different trip', () => {
+    const dayOne = importOneTrack(repo, tripId, sampleGpx({ name: 'Day 1' }))
+    const otherTripId = repo.createTrip('Different Trip').id
+    importOneTrack(
+      repo,
+      otherTripId,
+      sampleGpx({
+        name: 'Unrelated day',
+        points: [{ lat: '10', lon: '10', time: '2026-08-01T14:00:00Z' }]
+      })
+    )
+
+    expect(repo.listOtherTimedTrackRangesInSameTrip(dayOne.id)).toEqual([])
+  })
+
+  it('returns an empty list when the track does not exist', () => {
+    expect(repo.listOtherTimedTrackRangesInSameTrip(999)).toEqual([])
   })
 })
 

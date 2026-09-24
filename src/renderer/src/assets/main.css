@@ -262,6 +262,21 @@ button:hover {
   margin: 16px 0;
 }
 
+/* A more pointed nudge than the plain offset-prompt below it — shown only when some other track
+   in the trip would fit this batch far better (see suggestedTrack), so it's styled to stand out
+   as the thing to notice first, not just another form field. */
+.offset-suggestion {
+  background-color: var(--color-background-soft);
+  border-left: 3px solid var(--accent-note);
+  border-radius: 0 8px 8px 0;
+  padding: 16px;
+  margin: 16px 0 0;
+}
+
+.offset-suggestion p {
+  margin: 0 0 12px;
+}
+
 .offset-prompt label {
   display: block;
   margin-bottom: 12px;

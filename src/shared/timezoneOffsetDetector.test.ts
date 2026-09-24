@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { detectTimezoneOffset } from './timezoneOffsetDetector'
+import {
+  detectTimezoneOffset,
+  suggestBetterTrack,
+  type TrackTimeRange
+} from './timezoneOffsetDetector'
 
 describe('detectTimezoneOffset', () => {
   const trackStart = '2026-07-01T14:00:00Z'
@@ -81,5 +85,91 @@ describe('detectTimezoneOffset', () => {
     expect(detectTimezoneOffset(trackStart, trackEnd, photoTimestamps)).toEqual({
       offsetMinutes: 120
     })
+  })
+})
+
+describe('suggestBetterTrack', () => {
+  // A trip where "today's" track runs 2026-07-03, but the hiker accidentally picked photos from
+  // 2026-07-01 instead — the exact mistake this function exists to catch.
+  const wrongDayPhotos = ['2026-07-01T16:05:00Z', '2026-07-01T19:55:00Z']
+
+  const dayOne: TrackTimeRange = {
+    trackId: 1,
+    name: 'Day 1',
+    date: '2026-07-01',
+    startIso: '2026-07-01T14:00:00Z',
+    endIso: '2026-07-01T20:00:00Z'
+  }
+  const dayTwo: TrackTimeRange = {
+    trackId: 2,
+    name: 'Day 2',
+    date: '2026-07-02',
+    startIso: '2026-07-02T14:00:00Z',
+    endIso: '2026-07-02T20:00:00Z'
+  }
+  const dayThree: TrackTimeRange = {
+    trackId: 3,
+    name: 'Day 3',
+    date: '2026-07-03',
+    startIso: '2026-07-03T14:00:00Z',
+    endIso: '2026-07-03T20:00:00Z'
+  }
+
+  it('suggests the track the batch actually fits when the current offset is implausible', () => {
+    // Importing onto Day 3's track proposes a ~48h offset for these Day-1 photos — way past
+    // plausible clock drift — while Day 1 itself needs none at all.
+    const { offsetMinutes: currentOffset } = detectTimezoneOffset(
+      dayThree.startIso,
+      dayThree.endIso,
+      wrongDayPhotos
+    )
+    const suggestion = suggestBetterTrack(currentOffset, wrongDayPhotos, [dayOne, dayTwo])
+    expect(suggestion).toEqual({
+      trackId: dayOne.trackId,
+      name: dayOne.name,
+      date: dayOne.date,
+      offsetMinutes: 60
+    })
+  })
+
+  it('does not bother checking other tracks when the current offset is already plausible', () => {
+    // A perfectly ordinary 2-hour camera-clock error — should never second-guess this.
+    const suggestion = suggestBetterTrack(120, ['2026-07-03T16:00:00Z'], [dayOne, dayTwo])
+    expect(suggestion).toBeNull()
+  })
+
+  it('returns null when no other track fits any better either', () => {
+    // Every candidate track still needs an implausible correction of its own.
+    const suggestion = suggestBetterTrack(2880, wrongDayPhotos, [dayThree])
+    expect(suggestion).toBeNull()
+  })
+
+  it('picks the closest-fitting track when more than one is plausible', () => {
+    // Two candidate tracks close enough together in time that a batch can plausibly fit either —
+    // the nearer one (trackA, only 60 min off) should win over the farther one (trackB, 90 min
+    // off), even though both are within PLAUSIBLE_DRIFT_MINUTES.
+    const trackA: TrackTimeRange = {
+      trackId: 10,
+      name: 'Track A',
+      date: '2026-07-05',
+      startIso: '2026-07-05T14:00:00Z',
+      endIso: '2026-07-05T16:00:00Z' // midpoint 15:00Z
+    }
+    const trackB: TrackTimeRange = {
+      trackId: 11,
+      name: 'Track B',
+      date: '2026-07-05',
+      startIso: '2026-07-05T16:30:00Z',
+      endIso: '2026-07-05T18:30:00Z' // midpoint 17:30Z
+    }
+    const photos = ['2026-07-05T15:45:00Z']
+
+    const suggestion = suggestBetterTrack(9999, photos, [trackA, trackB])
+
+    expect(suggestion?.trackId).toBe(trackA.trackId)
+  })
+
+  it('returns null when there are no other tracks to compare against', () => {
+    expect(suggestBetterTrack(2880, wrongDayPhotos, [])).toBeNull()
   })
 })

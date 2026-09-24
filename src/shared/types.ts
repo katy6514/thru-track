@@ -102,6 +102,13 @@ export interface PhotoImportNeedsOffset {
   proposedOffsetMinutes: number
   pending: PendingPhoto[]
   duplicatesSkipped: number
+  // Set when `proposedOffsetMinutes` is implausible for a real camera-clock error (see
+  // PLAUSIBLE_DRIFT_MINUTES) AND some other track in the same trip would need only a plausible
+  // one for this same batch — a strong signal these photos were meant for that day instead of
+  // this one, not that this camera's clock is unusually wrong. Null whenever there's no such
+  // better-fitting track (including the common case where this track's own offset is already
+  // plausible, so nothing else was even checked).
+  suggestedTrack: { trackId: number; name: string; date: string; offsetMinutes: number } | null
 }
 
 // A completed import (offset-confirm not needed, or already resolved via

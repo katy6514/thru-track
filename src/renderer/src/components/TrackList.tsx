@@ -330,6 +330,10 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
           setSelectedTrack(updated)
           refresh()
         }}
+        onOpenTrack={(trackId) => {
+          const target = tracks.find((t) => t.id === trackId)
+          if (target) setSelectedTrack(target)
+        }}
       />
     )
   }

@@ -58,3 +58,54 @@ export function detectTimezoneOffset(
 
   return { offsetMinutes: roundToNearestHalfHourMinutes(batchMidMs - trackMidMs) }
 }
+
+// A real camera-clock error (wrong timezone, DST never adjusted, clock never set) is rarely more
+// than a few hours — beyond this, an offset is far more likely to mean "these photos belong to a
+// different day" than "this camera's clock is unusually wrong." Exported so callers can cheaply
+// skip the cross-track lookup suggestBetterTrack needs (see below) when a track's own offset is
+// already this plausible, rather than always querying every other track in the trip.
+export const PLAUSIBLE_DRIFT_MINUTES = 180
+
+// One other track's own date/name plus its recorded time span — everything suggestBetterTrack
+// needs to test whether a photo batch actually fits it better than the track it was imported to.
+export interface TrackTimeRange {
+  trackId: number
+  name: string
+  date: string
+  startIso: string
+  endIso: string
+}
+
+export interface TrackSuggestion {
+  trackId: number
+  name: string
+  date: string
+  offsetMinutes: number
+}
+
+// Catches the "wrong track, not a wrong clock" mistake: a hiker importing today's photos onto
+// yesterday's track (or vice versa) sees the same shape of result — a big proposed offset — as a
+// genuinely broken camera clock, but the fix is completely different (open the right track, not
+// apply a 42-hour "correction"). When this track's own offset is already implausible for real
+// clock drift, checks every other track in the trip for one the same batch would fit *plausibly*
+// instead, and returns whichever such track needs the smallest correction — the strongest
+// candidate for "this is actually where these photos belong." Returns null when this track's own
+// offset is already plausible (the common case, and by far the most likely explanation), or when
+// no other track fits any better.
+export function suggestBetterTrack(
+  currentOffsetMinutes: number,
+  photoTimestamps: string[],
+  otherTracks: TrackTimeRange[]
+): TrackSuggestion | null {
+  if (Math.abs(currentOffsetMinutes) <= PLAUSIBLE_DRIFT_MINUTES) return null
+
+  let best: TrackSuggestion | null = null
+  for (const track of otherTracks) {
+    const { offsetMinutes } = detectTimezoneOffset(track.startIso, track.endIso, photoTimestamps)
+    if (Math.abs(offsetMinutes) > PLAUSIBLE_DRIFT_MINUTES) continue
+    if (best === null || Math.abs(offsetMinutes) < Math.abs(best.offsetMinutes)) {
+      best = { trackId: track.trackId, name: track.name, date: track.date, offsetMinutes }
+    }
+  }
+  return best
+}

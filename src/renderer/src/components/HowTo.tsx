@@ -133,6 +133,16 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
           day&rsquo;s line drawn in its own color, with a matching dot next to that day&rsquo;s name
           in the list below. Click a line on the map (or a day&rsquo;s name) to open that day.
         </p>
+        <p>
+          A trip that never leaves one state just lists its days plainly, same as always. Once a
+          trip crosses into a second state (or a third, or more), the list groups into an accordion
+          instead — one state open at a time — so a long trip doesn&rsquo;t turn into one very long
+          scroll. Expanding a state zooms the map into just that state&rsquo;s days; collapsing back
+          zooms out to the whole trip again. A stretch that genuinely hugs a state line for a while
+          (rather than crossing it once and moving on) gets its own combined group, like{' '}
+          <em>&ldquo;Montana / Idaho&rdquo;</em>, instead of flickering between two single-state
+          groups day by day.
+        </p>
         <div className="how-to-callout">
           <span className="how-to-callout-label">Heads up</span>
           <p>
@@ -370,6 +380,15 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             applies to the whole batch before anything is placed.
           </p>
         </div>
+        <p>
+          If that correction would be unusually large — bigger than a real camera clock is likely to
+          drift — the app also checks whether the photos actually fit a <em>different</em> day in
+          the trip much better. When they do, you&rsquo;ll see that day named directly, with a{' '}
+          <strong>Go to&hellip; instead</strong> button, right above the correction prompt. This is
+          exactly the &ldquo;I meant to import today&rsquo;s photos, not two days ago&rsquo;s&rdquo;
+          mistake — nothing is written until you confirm either way, so backing out and going to the
+          right day costs nothing.
+        </p>
         <p>
           Placed photos show as a{' '}
           <span className="how-to-chip">

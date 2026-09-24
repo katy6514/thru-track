@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3'
 import type { Trip, Track, TrackPoint, Entry, JournalNote, Photo, Message } from '../shared/types'
 import { parseGpx, buildGpx, type ParsedGpxTrack } from './gpxParser'
 import { parseInreachCsv } from './inreachCsvParser'
+import type { TrackTimeRange } from '../shared/timezoneOffsetDetector'
 
 interface TripRow {
   id: number
@@ -440,6 +441,44 @@ export class Repository {
       .prepare('SELECT * FROM track_points WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
       .all(trackId) as TrackPointRow[]
     return rows.map(toTrackPoint)
+  }
+
+  // Every other TIMED track in the same trip as `trackId`, with its own recorded start/end —
+  // cheap (a MIN/MAX aggregate, not a full point load) so the photo-import flow can check whether
+  // a batch actually fits some other day in the trip better than the one it's being imported to
+  // (see suggestBetterTrack in timezoneOffsetDetector.ts). A track with no timestamps at all is
+  // naturally excluded: it has no non-null timestamp for MIN/MAX to aggregate, so it never
+  // produces a row.
+  listOtherTimedTrackRangesInSameTrip(trackId: number): TrackTimeRange[] {
+    const track = this.db.prepare('SELECT trip_id FROM tracks WHERE id = ?').get(trackId) as
+      { trip_id: number } | undefined
+    if (!track) return []
+
+    const rows = this.db
+      .prepare(
+        `SELECT t.id AS track_id, t.name, t.date,
+                MIN(tp.timestamp) AS start_iso, MAX(tp.timestamp) AS end_iso
+         FROM tracks t
+         JOIN track_points tp ON tp.track_id = t.id
+         WHERE t.trip_id = ? AND t.id != ? AND tp.timestamp IS NOT NULL
+         GROUP BY t.id
+         ORDER BY t.date ASC, t.id ASC`
+      )
+      .all(track.trip_id, trackId) as {
+      track_id: number
+      name: string
+      date: string
+      start_iso: string
+      end_iso: string
+    }[]
+
+    return rows.map((row) => ({
+      trackId: row.track_id,
+      name: row.name,
+      date: row.date,
+      startIso: row.start_iso,
+      endIso: row.end_iso
+    }))
   }
 
   getEntry(trackId: number): Entry | null {

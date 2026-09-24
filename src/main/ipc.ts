@@ -11,7 +11,11 @@ import {
   type StartedUploadServer
 } from './photoUploadServer'
 import { interpolatePosition } from '../shared/positionInterpolator'
-import { detectTimezoneOffset } from '../shared/timezoneOffsetDetector'
+import {
+  detectTimezoneOffset,
+  suggestBetterTrack,
+  PLAUSIBLE_DRIFT_MINUTES
+} from '../shared/timezoneOffsetDetector'
 import type {
   Track,
   TrackPoint,
@@ -301,11 +305,26 @@ export function registerIpcHandlers(): void {
 
     if (trackStart !== null && trackEnd !== null && photosWithTimestamp.length > 0) {
       const { offsetMinutes } = detectTimezoneOffset(trackStart, trackEnd, photosWithTimestamp)
+
+      // Only worth checking sibling tracks at all once this track's own offset is already past
+      // plausible clock drift — the common case (a normal, small offset) never touches the DB for
+      // this. See suggestBetterTrack's own doc comment for what this is actually catching: a
+      // hiker importing today's photos onto a different day's track by mistake.
+      const suggestedTrack =
+        Math.abs(offsetMinutes) > PLAUSIBLE_DRIFT_MINUTES
+          ? suggestBetterTrack(
+              offsetMinutes,
+              photosWithTimestamp,
+              repository.listOtherTimedTrackRangesInSameTrip(trackId)
+            )
+          : null
+
       return {
         needsOffsetConfirm: true,
         proposedOffsetMinutes: offsetMinutes,
         pending,
-        duplicatesSkipped
+        duplicatesSkipped,
+        suggestedTrack
       }
     }
 
