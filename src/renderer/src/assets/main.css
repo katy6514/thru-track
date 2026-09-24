@@ -95,6 +95,15 @@ button:hover {
   margin-bottom: 16px;
 }
 
+/* Shared by TripList and TrackList — sits right above the list it edits. Rename/Delete on each
+   row stay hidden until this is toggled on, so a plain row reads as just its name and date the
+   rest of the time. */
+.list-edit-toggle {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .trips {
   display: flex;
   flex-direction: column;
