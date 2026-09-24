@@ -104,6 +104,14 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }, [tracks])
 
+  // `overviewPoints` is only ever replaced wholesale once every current track's points have
+  // resolved (see the fetch effect above) — but there's a beat between `tracks` updating and that
+  // fetch landing where it still holds a stale (or empty) snapshot. Without this check, the list
+  // would render once against that stale snapshot first — every track un-groupable, so it
+  // momentarily falls back to one flat list — and then again, correctly grouped, a moment later.
+  // Gating the whole section on this instead trades that flash for a brief loading line.
+  const overviewPointsReady = tracks.every((t) => overviewPoints.has(t.id))
+
   const stateGroups = useMemo(
     () => groupTracksByState(tracks, overviewPoints),
     [tracks, overviewPoints]
@@ -461,6 +469,8 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
 
       {tracks.length === 0 ? (
         <p className="empty">No tracks yet. Import a GPX file to add this trip&apos;s first day.</p>
+      ) : !overviewPointsReady ? (
+        <p className="empty">Loading tracks…</p>
       ) : (
         <div className="track-list-layout">
           <div className="track-list-map-col">
