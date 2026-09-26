@@ -26,10 +26,10 @@ export function attachClickToZoom(map: L.Map, container: HTMLDivElement): void {
 // map and the trip-wide overview map) so they all offer the same basemap choices.
 export function addBaseLayers(map: L.Map): void {
   const baseLayers: Record<string, L.TileLayer> = {
-    // Renders contour lines and hillshading from SRTM elevation data on top of OSM data — the
-    // default, since elevation is visible at a glance. Its tile server only produces tiles up to
-    // z17 (maxNativeZoom) — beyond that Leaflet upscales the z17 tiles rather than requesting
-    // ones that don't exist. `maxZoom` is left at the other layers' ceiling (20) rather than 17
+    // Renders contour lines and hillshading from SRTM elevation data on top of OSM data. Its tile
+    // server only produces tiles up to z17 (maxNativeZoom) — beyond that Leaflet upscales the z17
+    // tiles rather than requesting ones that don't exist. `maxZoom` is left at the other layers'
+    // ceiling (20) rather than 17
     // so the layer control doesn't gray out Topo's radio button the moment you're zoomed in past
     // 17 on a different layer — Leaflet's control auto-disables any base layer whose maxZoom is
     // below the current zoom, which otherwise made switching back to Topo look broken.
