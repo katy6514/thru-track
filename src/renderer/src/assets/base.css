@@ -1,3 +1,13 @@
+/* Self-hosted via @fontsource rather than linking fonts.googleapis.com — this app works fully
+   offline, so its fonts ship in the app bundle instead of being fetched from Google at runtime.
+   Only the weights/styles actually used by the rules below are pulled in. */
+@import '@fontsource/lora/400.css';
+@import '@fontsource/lora/400-italic.css';
+@import '@fontsource/lora/600.css';
+@import '@fontsource/lora/700.css';
+@import '@fontsource/cantarell/400.css';
+@import '@fontsource/cantarell/700.css';
+
 /* Theme tokens. The app switches between the dark and light blocks below by setting
    data-theme="dark" | "light" on the root element (see src/renderer/src/theme.ts) based on local
    clock time, not OS preference — so a bare :root fallback (matching the dark block, the app's
@@ -146,26 +156,9 @@ ul {
    since this app's real content is what a hiker wrote and read, that deserves a text face built
    for reading, not a UI grotesque. */
 :root {
-  --font-display:
-    Futura,
-    'Century Gothic',
-    'Avenir Next Condensed',
-    'Trebuchet MS',
-    sans-serif;
-  --font-body:
-    Georgia,
-    'Iowan Old Style',
-    'Palatino Linotype',
-    Palatino,
-    serif;
-  --font-mono:
-    ui-monospace,
-    SFMono-Regular,
-    SF Mono,
-    Menlo,
-    Consolas,
-    Liberation Mono,
-    monospace;
+  --font-display: Cantarell, 'Century Gothic', 'Avenir Next Condensed', 'Trebuchet MS', sans-serif;
+  --font-body: Lora, Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
+  --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
 }
 
 body {
