@@ -77,15 +77,38 @@ interface Block {
   tracks: Track[]
 }
 
+// A track with no GPS data at all (most commonly a zero day — a rest day has no path to sample)
+// carries no information about which state it happened in, but it definitely happened *somewhere
+// along the trip*, physically alongside whatever state the days around it were in. Rather than
+// treat it like a genuinely unresolvable track (which would force a hard break — splitting an
+// otherwise long, clean run into repeated same-state groups with "Other" wedged between them,
+// once per zero day), it's folded into whichever block it's adjacent to: onto the tail of the
+// block already in progress, or — if it comes before any real block has started yet — held until
+// the first one appears and prepended to it instead. Only a stretch with no real block at all
+// (the whole trip has no GPS data) falls through to becoming its own unresolvable block.
 function buildBlocks(classifications: TrackClassification[]): Block[] {
   const blocks: Block[] = []
+  let leadingNoDataTracks: Track[] = []
   for (const c of classifications) {
+    if (c.dominant === null) {
+      const previous = blocks[blocks.length - 1]
+      if (previous) previous.tracks.push(c.track)
+      else leadingNoDataTracks.push(c.track)
+      continue
+    }
     const previous = blocks[blocks.length - 1]
     if (previous && !previous.ambiguous && !c.ambiguous && previous.state === c.dominant) {
       previous.tracks.push(c.track)
       continue
     }
     blocks.push({ state: c.dominant, ambiguous: c.ambiguous, tracks: [c.track] })
+    if (leadingNoDataTracks.length > 0) {
+      blocks[blocks.length - 1].tracks.unshift(...leadingNoDataTracks)
+      leadingNoDataTracks = []
+    }
+  }
+  if (leadingNoDataTracks.length > 0) {
+    blocks.push({ state: null, ambiguous: false, tracks: leadingNoDataTracks })
   }
   return blocks
 }

@@ -116,16 +116,58 @@ describe('clusterClassifications', () => {
     expect(groups[1].tracks.map((t) => t.id)).toEqual([3, 4, 5, 6])
   })
 
-  it('groups every unresolvable track into one "Other" group, sorted last', () => {
+  it('absorbs a no-GPS track (e.g. a zero day) into the adjacent state rather than breaking the group', () => {
     const groups = clusterClassifications([
       classification(1, '2026-07-01', null),
       classification(2, '2026-07-02', 'Colorado'),
       classification(3, '2026-07-03', 'Colorado'),
       classification(4, '2026-07-04', null)
     ])
-    expect(groups.map((g) => g.label)).toEqual(['Colorado', 'Other'])
-    expect(groups[1].tracks.map((t) => t.id)).toEqual([1, 4])
-    expect(groups[1].states).toEqual([])
+    expect(groups).toEqual([
+      {
+        label: 'Colorado',
+        states: ['Colorado'],
+        tracks: [
+          track(1, '2026-07-01'),
+          track(2, '2026-07-02'),
+          track(3, '2026-07-03'),
+          track(4, '2026-07-04')
+        ]
+      }
+    ])
+  })
+
+  it('absorbs a zero day in the middle of a long settled run instead of splitting it into repeated groups (the real bug this fixes)', () => {
+    const classifications = [
+      ...cleanRun(1, '2024-06-16', 5, 'Montana'),
+      classification(6, '2024-06-21', null),
+      ...cleanRun(7, '2024-06-22', 5, 'Montana')
+    ]
+    const groups = clusterClassifications(classifications)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].label).toBe('Montana')
+    expect(groups[0].tracks).toHaveLength(11)
+  })
+
+  it('attaches a zero day between two different states to the preceding state, not the following one', () => {
+    const groups = clusterClassifications([
+      ...cleanRun(1, '2024-06-16', 3, 'Montana'),
+      classification(4, '2024-06-19', null),
+      ...cleanRun(5, '2024-06-20', 3, 'Idaho')
+    ])
+    expect(groups.map((g) => g.label)).toEqual(['Montana', 'Idaho'])
+    expect(groups[0].tracks.map((t) => t.id)).toEqual([1, 2, 3, 4])
+    expect(groups[1].tracks.map((t) => t.id)).toEqual([5, 6, 7])
+  })
+
+  it('groups tracks into "Other" only when no track in the trip resolves to a real state at all', () => {
+    const groups = clusterClassifications([
+      classification(1, '2026-07-01', null),
+      classification(2, '2026-07-02', null)
+    ])
+    expect(groups).toEqual([
+      { label: 'Other', states: [], tracks: [track(1, '2026-07-01'), track(2, '2026-07-02')] }
+    ])
   })
 
   it('treats a lone ambiguous track with no bordering state as its own single-state group', () => {
