@@ -630,6 +630,12 @@ button:hover {
   position: relative;
 }
 
+/* A confirmed zero-point track (e.g. a zero day) — hidden rather than unmounted, so the ref'd
+   container div stays mounted across every render; see mapDataConfirmedEmpty in TrackDetail.tsx. */
+.track-map-wrapper-hidden {
+  display: none;
+}
+
 .track-map {
   width: 100%;
   height: 500px;

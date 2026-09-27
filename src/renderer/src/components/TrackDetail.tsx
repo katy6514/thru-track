@@ -415,10 +415,18 @@ function TrackDetail({
           mapRef.current = null
         }
         photoMarkersRef.current = new Map()
-        const { map, marker, messageLayer } = renderTrackMap(mapContainerRef.current, fetchedPoints)
-        mapRef.current = map
-        markerRef.current = marker
-        messageLayerRef.current = messageLayer
+        // A zero-point track (e.g. a zero day) gets no Leaflet map at all — not just an empty one
+        // — so nothing is built here, and the map section's container stays hidden (see
+        // mapDataConfirmedEmpty above and the JSX below).
+        if (fetchedPoints.length > 0) {
+          const { map, marker, messageLayer } = renderTrackMap(
+            mapContainerRef.current,
+            fetchedPoints
+          )
+          mapRef.current = map
+          markerRef.current = marker
+          messageLayerRef.current = messageLayer
+        }
         setPoints(fetchedPoints)
         setNotes(fetchedNotes)
         setPhotos(fetchedPhotos)
@@ -480,6 +488,12 @@ function TrackDetail({
     }
   }, [messages])
 
+  // A confirmed zero-point track (e.g. a zero day) has no geography to show at all — the map
+  // section is hidden entirely rather than showing an empty world view. Deliberately only true
+  // once points have actually loaded and come back empty (not merely "not loaded yet"), so a real
+  // track's map stays visible through its own normal loading window exactly as it always has —
+  // see the map-building effect below, which skips creating a Leaflet map at all in this case.
+  const mapDataConfirmedEmpty = points !== null && points.length === 0
   const isTimed = points !== null && points.length > 0 && points[0].timestamp !== null
   const trackStartMs = isTimed && points ? Date.parse(points[0].timestamp as string) : null
   const trackEndMs =
@@ -1178,13 +1192,15 @@ function TrackDetail({
           </p>
         )}
         {messageError && <p className="error">{messageError}</p>}
-        {points?.length === 0 && (
-          <p className="empty">This track has no GPS points to show on the map.</p>
-        )}
 
-        <div className="track-map-wrapper">
+        {/* A zero-point track (e.g. a zero day) has no map at all — hidden via a class, not
+            unmounted, so mapContainerRef stays valid across every render (see the map-building
+            effect above, which itself skips ever creating a Leaflet map here in that case). */}
+        <div
+          className={`track-map-wrapper${mapDataConfirmedEmpty ? ' track-map-wrapper-hidden' : ''}`}
+        >
           <div className="track-map" ref={mapContainerRef} />
-          {selectedPhoto && (
+          {selectedPhoto && !mapDataConfirmedEmpty && (
             <div className="photo-map-overlay">
               <div className="photo-map-overlay-header">
                 <h2>{formatPhotoTitle(selectedPhoto)}</h2>
@@ -1465,6 +1481,18 @@ function TrackDetail({
           </ul>
         )}
       </div>
+
+      {/* A zero-point track has no map for the usual photo-map-overlay to cover, so an expanded
+          photo uses the same plain side panel as a note/message instead. */}
+      {selectedPhoto && mapDataConfirmedEmpty && (
+        <SidePanel title={formatPhotoTitle(selectedPhoto)} onClose={() => setSelectedItem(null)}>
+          {photoDataLoading && <p className="empty">Loading photo…</p>}
+          {photoDataError && <p className="error">{photoDataError}</p>}
+          {!photoDataLoading && photoDataUri && (
+            <img className="photo-map-overlay-photo" src={photoDataUri} alt="" />
+          )}
+        </SidePanel>
+      )}
 
       {selectedNote && (
         <SidePanel title={formatNoteTitle(selectedNote)} onClose={() => setSelectedItem(null)}>
