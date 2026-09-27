@@ -339,6 +339,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     return (
       <TrackDetail
         track={selectedTrack}
+        tripTracks={tracks}
         onBack={() => setSelectedTrack(null)}
         onTrackUpdated={(updated) => {
           setSelectedTrack(updated)

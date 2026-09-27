@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Photo } from '../../../shared/types'
+import { orderPhotosChronologically } from '../../../shared/orderPhotos'
 
 interface PhotoSlideshowProps {
   photos: Photo[]
@@ -16,17 +17,7 @@ const FADE_MS = 1800
 // (a day's photo count is small enough that this is simpler and smoother than fetching on
 // demand mid-fade) and then just stacked, with only the current one's opacity ever changing.
 function PhotoSlideshow({ photos }: PhotoSlideshowProps): React.JSX.Element | null {
-  // Chronological when every photo has a timestamp; a photo with none (no EXIF time at all)
-  // sorts after the ones that do, rather than colliding at an arbitrary position among them.
-  const orderedPhotos = useMemo(
-    () =>
-      [...photos].sort((a, b) => {
-        if (a.timestamp === null) return b.timestamp === null ? 0 : 1
-        if (b.timestamp === null) return -1
-        return Date.parse(a.timestamp) - Date.parse(b.timestamp)
-      }),
-    [photos]
-  )
+  const orderedPhotos = useMemo(() => orderPhotosChronologically(photos), [photos])
 
   const [dataUriByPhotoId, setDataUriByPhotoId] = useState<Map<number, string>>(new Map())
   const [index, setIndex] = useState(0)

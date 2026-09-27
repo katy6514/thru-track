@@ -480,10 +480,27 @@ button:hover {
    name in TrackList's row listing) — scoped to .track-detail rather than changed on .track-date
    itself so that other usage is untouched. */
 .track-detail .track-date {
-  margin-bottom: 24px;
+  margin-bottom: 12px;
   color: var(--ev-c-text-2);
   font-size: 20px;
   font-weight: 600;
+}
+
+/* Previous/next-day buttons just under the date — hidden entirely on either side when there's no
+   adjacent track to go to (e.g. the first or last day of a trip, or a trip with only one track). */
+.track-day-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.track-day-nav-button {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.track-day-nav-button-next {
+  margin-left: auto;
 }
 
 /* Title, date and the stats table sit to the left; the photo slideshow (PhotoSlideshow.tsx),

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -18,6 +18,7 @@ import { cleanErrorMessage } from '../cleanErrorMessage'
 import { formatTrackDate } from '../formatTrackDate'
 import { addBaseLayers, attachClickToZoom } from '../mapBaseLayers'
 import { splitTrackIntoSegments } from '../../../shared/splitTrackSegments'
+import { orderPhotosChronologically } from '../../../shared/orderPhotos'
 import { interpolatePosition } from '../../../shared/positionInterpolator'
 import { computeTrackStats } from '../../../shared/trackStats'
 import {
@@ -52,6 +53,10 @@ const photoIcon = L.divIcon({
 
 interface TrackDetailProps {
   track: Track
+  // Every track in this track's trip, in the same date-sorted order the parent already fetches
+  // and displays them in — used only to find the previous/next day's track for the header nav
+  // buttons below, so this component doesn't need its own separate fetch of the same list.
+  tripTracks: Track[]
   onBack: () => void
   // Called after a successful name/date edit (see the track-info-edit form below) so the parent
   // — which owns the selected Track object this component only receives as a prop — can update
@@ -59,9 +64,8 @@ interface TrackDetailProps {
   // hiker navigated away and back.
   onTrackUpdated: (track: Track) => void
   // Switches the parent's selected track to the given id — used by the photo-offset prompt's
-  // "Go to <day> instead" suggestion (see suggestedTrack below) so a hiker who imported photos
-  // onto the wrong day can jump straight to the right one instead of backing out and hunting for
-  // it themselves.
+  // "Go to <day> instead" suggestion (see suggestedTrack below), and by the previous/next-day
+  // header buttons, so a hiker can jump straight to another day without backing out to the list.
   onOpenTrack: (trackId: number) => void
 }
 
@@ -223,6 +227,7 @@ type SelectedItem =
 
 function TrackDetail({
   track,
+  tripTracks,
   onBack,
   onTrackUpdated,
   onOpenTrack
@@ -480,6 +485,17 @@ function TrackDetail({
   const trackEndMs =
     isTimed && points ? Date.parse(points[points.length - 1].timestamp as string) : null
   const trackStats = points !== null ? computeTrackStats(points) : null
+
+  // Previous/next day, by position in the trip's own date-sorted track list (not by comparing
+  // `date` strings directly) — consistent with how the trip overview already orders/colors
+  // tracks (see trackIndexById in TrackList.tsx), including two tracks that happen to share a
+  // date.
+  const tripTrackIndex = tripTracks.findIndex((t) => t.id === track.id)
+  const previousTrack = tripTrackIndex > 0 ? tripTracks[tripTrackIndex - 1] : null
+  const nextTrack =
+    tripTrackIndex !== -1 && tripTrackIndex < tripTracks.length - 1
+      ? tripTracks[tripTrackIndex + 1]
+      : null
 
   const handleStartEditingTrackInfo = (): void => {
     setTrackNameInput(track.name)
@@ -756,6 +772,34 @@ function TrackDetail({
       ? (messages.find((m) => m.id === selectedItem.id) ?? null)
       : null
 
+  // Same chronological order as the header slideshow, so the arrow-key navigation below moves
+  // through the expanded photo the same way a hiker would expect from browsing that strip.
+  const orderedPhotos = useMemo(() => orderPhotosChronologically(photos), [photos])
+
+  // Left/right arrow keys step through the expanded photo overlay while it's open. Only attached
+  // while a photo is actually selected, so arrow keys are otherwise left alone everywhere else on
+  // the page (e.g. moving the cursor in the note/journal text inputs) — and even then, a keypress
+  // that lands in an editable element is ignored rather than hijacked, in case one happens to be
+  // focused underneath the overlay.
+  useEffect(() => {
+    if (!selectedPhoto) return
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+
+      const index = orderedPhotos.findIndex((p) => p.id === selectedPhoto.id)
+      if (index === -1) return
+      const nextIndex = e.key === 'ArrowLeft' ? index - 1 : index + 1
+      if (nextIndex < 0 || nextIndex >= orderedPhotos.length) return
+
+      e.preventDefault()
+      setSelectedItem({ kind: 'photo', id: orderedPhotos[nextIndex].id })
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedPhoto, orderedPhotos])
+
   // Fetches the actual image bytes (as a base64 data URI) only once a photo is selected — the
   // renderer can't read arbitrary local files itself, so the side panel shows a loading state
   // while main process reads the file and hands it back over IPC.
@@ -931,6 +975,28 @@ function TrackDetail({
                   )}
                 </div>
                 <p className="track-date">{formatTrackDate(track.date)}</p>
+                {(previousTrack || nextTrack) && (
+                  <div className="track-day-nav">
+                    {previousTrack && (
+                      <button
+                        type="button"
+                        className="track-day-nav-button"
+                        onClick={() => onOpenTrack(previousTrack.id)}
+                      >
+                        &larr; {formatTrackDate(previousTrack.date)}
+                      </button>
+                    )}
+                    {nextTrack && (
+                      <button
+                        type="button"
+                        className="track-day-nav-button track-day-nav-button-next"
+                        onClick={() => onOpenTrack(nextTrack.id)}
+                      >
+                        {formatTrackDate(nextTrack.date)} &rarr;
+                      </button>
+                    )}
+                  </div>
+                )}
               </>
             )}
 
