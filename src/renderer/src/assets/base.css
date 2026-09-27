@@ -94,9 +94,9 @@
   --accent-danger: #ff6b6b;
 }
 
-/* Light palette: a sage-tinted "paper" ground rather than stark white, in the same family as the
-   in-app how-to guide's own light styling — chosen instead of a default white/gray so the two
-   feel like one visual identity rather than a generic light-mode inversion. */
+/* Light palette: a clean, neutral grayscale "paper" ground — no color tint on the background or
+   gray scale (the sage tint this used to carry has been removed); accent colors below still
+   carry all the color in this theme. */
 :root[data-theme='light'] {
   --ev-c-white: #ffffff;
   --ev-c-white-soft: #f8f8f8;
@@ -106,13 +106,13 @@
   --ev-c-black-soft: #222222;
   --ev-c-black-mute: #282828;
 
-  --ev-c-gray-1: #b7bfb0;
-  --ev-c-gray-2: #cbd1c3;
-  --ev-c-gray-3: #dde2d5;
+  --ev-c-gray-1: #b8b8b8;
+  --ev-c-gray-2: #cccccc;
+  --ev-c-gray-3: #dedede;
 
-  --ev-c-text-1: #1b211d;
-  --ev-c-text-2: #5b6660;
-  --ev-c-text-3: rgba(27, 33, 29, 0.42);
+  --ev-c-text-1: #1b1b1b;
+  --ev-c-text-2: #5c5c5c;
+  --ev-c-text-3: rgba(27, 27, 27, 0.42);
 
   --ev-button-alt-border: transparent;
   --ev-button-alt-text: var(--ev-c-text-1);
@@ -121,9 +121,9 @@
   --ev-button-alt-hover-text: var(--ev-c-text-1);
   --ev-button-alt-hover-bg: var(--ev-c-gray-2);
 
-  --color-background: #eef0ea;
-  --color-background-soft: #e2e6dc;
-  --color-background-mute: #d7dbcd;
+  --color-background: #f0f0f0;
+  --color-background-soft: #e4e4e4;
+  --color-background-mute: #d8d8d8;
   --color-text: var(--ev-c-text-1);
 
   --accent-trail: #1d4ed8;
