@@ -12,18 +12,14 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
       <h1>How to use Thru Track</h1>
       <p className="how-to-dek">
         A local-first desktop app for reconstructing a day on trail by combining all types of data
-        you have captured: your GPS track, your photos, your satellite check-ins, and any notes, all
-        lined up against the same track. This is the whole app, front to back.
+        you have captured: your GPS track, your photos, and your satellite check-ins, all lined up
+        against the same track. This is the whole app, front to back.
       </p>
 
       <div className="how-to-legend">
         <span className="how-to-legend-item">
           <span className="how-to-swatch how-to-swatch-trail" />
           Track / scrub position
-        </span>
-        <span className="how-to-legend-item">
-          <span className="how-to-swatch how-to-swatch-note" />
-          Journal note
         </span>
         <span className="how-to-legend-item">
           <span className="how-to-swatch how-to-swatch-photo" />
@@ -42,7 +38,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         <span className="how-to-flow-arrow">&rarr;</span>
         <span className="how-to-flow-step">Map + timeline</span>
         <span className="how-to-flow-arrow">&rarr;</span>
-        <span className="how-to-flow-step">Notes / photos / messages</span>
+        <span className="how-to-flow-step">Photos / messages</span>
         <span className="how-to-flow-arrow">&rarr;</span>
         <span className="how-to-flow-step">Journal entry</span>
       </div>
@@ -70,33 +66,28 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             </a>
           </li>
           <li>
-            <a href="#notes">
-              <span className="how-to-toc-num">05</span>Notes
-            </a>
-          </li>
-          <li>
             <a href="#photos">
-              <span className="how-to-toc-num">06</span>Photos
+              <span className="how-to-toc-num">05</span>Photos
             </a>
           </li>
           <li>
             <a href="#messages">
-              <span className="how-to-toc-num">07</span>Satellite messages
+              <span className="how-to-toc-num">06</span>Satellite messages
             </a>
           </li>
           <li>
             <a href="#deleting">
-              <span className="how-to-toc-num">08</span>Deleting things
+              <span className="how-to-toc-num">07</span>Deleting things
             </a>
           </li>
           <li>
             <a href="#data">
-              <span className="how-to-toc-num">09</span>Where your data lives
+              <span className="how-to-toc-num">08</span>Where your data lives
             </a>
           </li>
           <li>
             <a href="#reference">
-              <span className="how-to-toc-num">10</span>Quick reference
+              <span className="how-to-toc-num">09</span>Quick reference
             </a>
           </li>
         </ol>
@@ -147,7 +138,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
           <span className="how-to-callout-label">Heads up</span>
           <p>
             Deleting a trip deletes every day inside it — and everything attached to those days:
-            photos, notes, messages, journal entries. You&rsquo;ll be asked to confirm first, and
+            photos, messages, journal entries. You&rsquo;ll be asked to confirm first, and
             there&rsquo;s no undo. More on this in <a href="#deleting">Deleting things</a>.
           </p>
         </div>
@@ -189,8 +180,8 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
           <span className="how-to-callout-label">What you get either way</span>
           <p>
             A day like this still gets a full map. What it loses is the <em>timeline</em> —
-            there&rsquo;s no clock to scrub through, so items for that day (notes, photos, messages)
-            show up as a plain list instead of dots on a slider. See{' '}
+            there&rsquo;s no clock to scrub through, so items for that day (photos, messages) show
+            up as a plain list instead of dots on a slider. See{' '}
             <a href="#reconstruction">&sect;03</a> and <a href="#photos">&sect;06</a>.
           </p>
         </div>
@@ -304,49 +295,9 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         </p>
       </section>
 
-      <section className="how-to-chapter" id="notes">
-        <div className="how-to-chapter-head">
-          <span className="how-to-chapter-num">05</span>
-          <h2>Notes</h2>
-        </div>
-        <p className="how-to-lede">
-          A short, timestamped thought pinned to a moment in the day — separate from the full
-          journal entry.
-        </p>
-        <ol className="how-to-steps">
-          <li>
-            On a day&rsquo;s map view, find the small form under the timeline (or under the map, on
-            a timeless day).
-          </li>
-          <li>
-            On a day with a timeline, the time field defaults to wherever you&rsquo;re currently
-            scrubbed to — adjust it if you mean a different moment.
-          </li>
-          <li>
-            Type your note and click <strong>Add note</strong>.
-          </li>
-        </ol>
-        <p>
-          It appears as a small{' '}
-          <span className="how-to-chip">
-            <span className="how-to-swatch how-to-swatch-note" />
-            orange dot
-          </span>{' '}
-          on the timeline (or in the plain list, on a timeless day). Click it any time to reopen it.
-        </p>
-        <div className="how-to-callout how-to-callout-note">
-          <span className="how-to-callout-label">The side panel</span>
-          <p>
-            Clicking a note or a message opens a panel <em>beside</em> the map, not over it — the
-            map stays fully visible the whole time you&rsquo;re reading. A photo works a little
-            differently; see <a href="#photos">&sect;06</a>.
-          </p>
-        </div>
-      </section>
-
       <section className="how-to-chapter" id="photos">
         <div className="how-to-chapter-head">
-          <span className="how-to-chapter-num">06</span>
+          <span className="how-to-chapter-num">05</span>
           <h2>Photos</h2>
         </div>
         <p className="how-to-lede">
@@ -396,9 +347,10 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             green square
           </span>{' '}
           on the timeline and a green pin on the map. Click either to open the actual image — it
-          appears over the right half of the map (not beside it, like a note or message), and the
-          map pans and its pin pulses so you can still see roughly where the shot was taken while
-          you look at it.
+          appears over the right half of the map (not beside it, like a message), and the map pans
+          and its pin pulses so you can still see roughly where the shot was taken while you look at
+          it. A day with no GPS points at all (a zero day) has no map for the image to appear over,
+          so it opens in a plain side panel instead — same as a message.
         </p>
         <p>
           A photo with no GPS of its own <em>and</em> no timeline to estimate from (a timeless day,
@@ -416,7 +368,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
 
       <section className="how-to-chapter" id="messages">
         <div className="how-to-chapter-head">
-          <span className="how-to-chapter-num">07</span>
+          <span className="how-to-chapter-num">06</span>
           <h2>Satellite messages</h2>
         </div>
         <p className="how-to-lede">
@@ -440,7 +392,9 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
             teal diamond
           </span>{' '}
           on the timeline and a teal circle on the map. Click one to read its text, exact time, and
-          coordinates.
+          coordinates — it opens in a panel <em>beside</em> the map, not over it, so the map stays
+          fully visible the whole time you&rsquo;re reading. A photo works a little differently; see{' '}
+          <a href="#photos">&sect;05</a>.
         </p>
         <div className="how-to-callout how-to-callout-message">
           <span className="how-to-callout-label">If the file doesn&rsquo;t match</span>
@@ -454,7 +408,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
 
       <section className="how-to-chapter" id="deleting">
         <div className="how-to-chapter-head">
-          <span className="how-to-chapter-num">08</span>
+          <span className="how-to-chapter-num">07</span>
           <h2>Deleting things</h2>
         </div>
         <p className="how-to-lede">
@@ -463,8 +417,8 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
         <p>
           There&rsquo;s a <strong>Delete</strong> button on every trip and every day. Both ask you
           to confirm first, and both mean exactly what they say: removing a day takes its points,
-          notes, photos (and the copies of those photo files sitting on disk), messages, and journal
-          entry with it. Removing a trip does that for every day inside it.
+          photos (and the copies of those photo files sitting on disk), messages, and journal entry
+          with it. Removing a trip does that for every day inside it.
         </p>
         <div className="how-to-callout">
           <span className="how-to-callout-label">No trash, no undo</span>
@@ -477,22 +431,22 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
 
       <section className="how-to-chapter" id="data">
         <div className="how-to-chapter-head">
-          <span className="how-to-chapter-num">09</span>
+          <span className="how-to-chapter-num">08</span>
           <h2>Where your data lives</h2>
         </div>
         <p className="how-to-lede">On your machine. That&rsquo;s the whole answer.</p>
         <p>
           Thru Track doesn&rsquo;t need an account, a sign-in, or a network connection to work.
-          Every trip, track, note, photo, message, and journal entry lives in a single local
-          database, and every imported photo is copied into the app&rsquo;s own local folder
-          alongside it — nothing is uploaded, and nothing needs to be. Deleting something in the app
-          deletes it from disk, not just from view.
+          Every trip, track, photo, message, and journal entry lives in a single local database, and
+          every imported photo is copied into the app&rsquo;s own local folder alongside it —
+          nothing is uploaded, and nothing needs to be. Deleting something in the app deletes it
+          from disk, not just from view.
         </p>
       </section>
 
       <section className="how-to-chapter" id="reference">
         <div className="how-to-chapter-head">
-          <span className="how-to-chapter-num">10</span>
+          <span className="how-to-chapter-num">09</span>
           <h2>Quick reference</h2>
         </div>
         <p className="how-to-lede">The whole app, one row per feature.</p>
@@ -515,17 +469,6 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
                 </td>
                 <td>&mdash;</td>
                 <td>No</td>
-              </tr>
-              <tr>
-                <td>Note</td>
-                <td>Form under the timeline (or map, on a timeless day)</td>
-                <td>
-                  <span className="how-to-chip">
-                    <span className="how-to-swatch how-to-swatch-note" />
-                    Orange dot
-                  </span>
-                </td>
-                <td>Optional</td>
               </tr>
               <tr>
                 <td>Photo</td>

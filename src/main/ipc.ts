@@ -21,7 +21,6 @@ import type {
   TrackPoint,
   GpxImportNeedsDate,
   GpxImportNeedsStartDate,
-  JournalNote,
   Photo,
   PendingPhoto,
   PhotoImportNeedsOffset,
@@ -184,17 +183,12 @@ export function registerIpcHandlers(): void {
     repository.saveEntry(trackId, text)
   )
 
-  ipcMain.handle(
-    'notes:create',
-    (_event, trackId: number, content: string, timestamp: string | null): JournalNote =>
-      repository.createNote(trackId, content, timestamp)
-  )
-  ipcMain.handle('notes:list', (_event, trackId: number): JournalNote[] =>
-    repository.listNotesForTrack(trackId)
-  )
-
   ipcMain.handle('photos:list', (_event, trackId: number): Photo[] =>
     repository.listPhotosForTrack(trackId)
+  )
+
+  ipcMain.handle('photos:updateCaption', (_event, photoId: number, caption: string): Photo =>
+    repository.updatePhotoCaption(photoId, caption)
   )
 
   // Shared by both the direct-import path and photos:importWithOffset below: copies each pending

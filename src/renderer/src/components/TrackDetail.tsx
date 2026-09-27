@@ -7,7 +7,6 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import type {
   Track,
   TrackPoint,
-  JournalNote,
   Photo,
   PendingPhoto,
   PhotoImportNeedsOffset,
@@ -27,7 +26,7 @@ import {
   type TimelineCluster
 } from '../../../shared/clusterTimelineItems'
 import SidePanel from './SidePanel'
-import PhotoSlideshow from './PhotoSlideshow'
+import PhotoGallery from './PhotoGallery'
 
 // Leaflet's default marker icon references relative image paths that resolve fine when its CSS
 // is served as-is, but break once a bundler (Vite here) rewrites asset URLs — the icon silently
@@ -98,10 +97,9 @@ function renderTrackMap(
   const map = L.map(container, { scrollWheelZoom: false })
   attachClickToZoom(map, container)
 
-  // A satellite message always carries its own GPS position (unlike a photo or a journal note),
-  // so its map markers are populated by a separate effect keyed on the `messages` state — this
-  // empty layer group is just the place they get added to, independent of whether the track
-  // itself is timed.
+  // A satellite message always carries its own GPS position (unlike a photo), so its map markers
+  // are populated by a separate effect keyed on the `messages` state — this empty layer group is
+  // just the place they get added to, independent of whether the track itself is timed.
   const messageLayer = L.layerGroup().addTo(map)
 
   addBaseLayers(map)
@@ -134,20 +132,6 @@ function renderTrackMap(
   return { map, marker, messageLayer }
 }
 
-// Converts an epoch-ms instant into the local-time string a `datetime-local` input expects
-// ("YYYY-MM-DDTHH:mm"). Deliberately uses local time-of-day components (not UTC) since that's
-// what a `datetime-local` input always displays/edits — round-tripping through `new Date(value)`
-// on submit reconstructs the correct instant regardless of timezone.
-function toDatetimeLocalValue(ms: number): string {
-  const d = new Date(ms)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function formatNoteTitle(note: JournalNote): string {
-  return note.timestamp ? new Date(note.timestamp).toLocaleString() : 'Note'
-}
-
 function formatPhotoTitle(photo: Photo): string {
   return photo.timestamp ? new Date(photo.timestamp).toLocaleString() : 'Photo'
 }
@@ -171,7 +155,6 @@ function journalParagraphs(text: string): string[] {
 }
 
 const TIMELINE_ITEM_KIND_LABEL: Record<TimelineItem['kind'], string> = {
-  note: 'Note',
   photo: 'Photo',
   message: 'Message'
 }
@@ -190,15 +173,10 @@ function timelineMarkerLeft(percent: number): string {
   return `calc(${half}px + (100% - ${TIMELINE_THUMB_WIDTH_PX}px) * ${percent / 100})`
 }
 
-// Looks up a timeline item's own display text (a note's/message's content, or just "Photo" —
-// there's nothing photo-specific to show inline) — shared by a standalone marker's title/aria
-// label and by its entry in an open cluster's picker list.
-function timelineItemSummary(
-  item: TimelineItem,
-  notes: JournalNote[],
-  messages: Message[]
-): string {
-  if (item.kind === 'note') return notes.find((n) => n.id === item.id)?.content ?? 'Note'
+// Looks up a timeline item's own display text (a message's content, or just "Photo" — there's
+// nothing photo-specific to show inline) — shared by a standalone marker's title/aria label and
+// by its entry in an open cluster's picker list.
+function timelineItemSummary(item: TimelineItem, messages: Message[]): string {
   if (item.kind === 'message') return messages.find((m) => m.id === item.id)?.content ?? 'Message'
   return 'Photo'
 }
@@ -216,14 +194,10 @@ function formatOffset(minutes: number): string {
   return `${sign}${hours}h ${mins}m`
 }
 
-// Which side-panel item (if any) is currently open. A note, a photo, and a message can never be
-// open at the same time — this is a single discriminated slot rather than several independent
-// "selected id" states, so selecting one always closes whichever other kind was open.
-type SelectedItem =
-  | { kind: 'note'; id: number }
-  | { kind: 'photo'; id: number }
-  | { kind: 'message'; id: number }
-  | null
+// Which side-panel item (if any) is currently open. A photo and a message can never be open at
+// the same time — this is a single discriminated slot rather than two independent "selected id"
+// states, so selecting one always closes the other.
+type SelectedItem = { kind: 'photo'; id: number } | { kind: 'message'; id: number } | null
 
 function TrackDetail({
   track,
@@ -256,7 +230,7 @@ function TrackDetail({
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
   // Which timeline picker currently has its list open — at most one at a time. A number is an
   // index into the clusterTimelineItems() array (recomputed fresh each render from the same
-  // notes/photos/messages state the picker itself reads, so indexes stay valid between renders);
+  // photos/messages state the picker itself reads, so indexes stay valid between renders);
   // 'before'/'after' are the two edge buckets for items outside the track's own recorded time
   // range (see timelineBeforeItems/timelineAfterItems below).
   const [openTimelinePicker, setOpenTimelinePicker] = useState<number | 'before' | 'after' | null>(
@@ -296,16 +270,6 @@ function TrackDetail({
   const journalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const journalTextareaRef = useRef<HTMLTextAreaElement>(null)
   const journalPreviewRef = useRef<HTMLDivElement>(null)
-
-  const [notes, setNotes] = useState<JournalNote[]>([])
-  const [noteContent, setNoteContent] = useState('')
-  const [noteTimestampInput, setNoteTimestampInput] = useState('')
-  const [savingNote, setSavingNote] = useState(false)
-  const [noteError, setNoteError] = useState('')
-  // Once the hiker edits the timestamp field directly, stop overwriting it as the timeline is
-  // scrubbed — "defaults to the current scrub position" should only apply until they've made
-  // their own choice.
-  const noteTimestampTouchedRef = useRef(false)
 
   const [photos, setPhotos] = useState<Photo[]>([])
   const [importingPhotos, setImportingPhotos] = useState(false)
@@ -380,13 +344,9 @@ function TrackDetail({
       clearTimeout(journalTimeoutRef.current)
       journalTimeoutRef.current = null
     }
-    setNotes([])
     setPhotos([])
     setMessages([])
     setSelectedItem(null)
-    setNoteContent('')
-    setNoteTimestampInput('')
-    setNoteError('')
     setPhotoError('')
     setPhotoDuplicatesSkipped(0)
     setMessageError('')
@@ -399,16 +359,14 @@ function TrackDetail({
     setPhoneUploadSession(null)
     setPhoneUploadError('')
     setShowAddDataMenu(false)
-    noteTimestampTouchedRef.current = false
 
     Promise.all([
       window.api.tracks.getPoints(track.id),
-      window.api.notes.list(track.id),
       window.api.photos.list(track.id),
       window.api.messages.list(track.id),
       window.api.entries.get(track.id)
     ])
-      .then(([fetchedPoints, fetchedNotes, fetchedPhotos, fetchedMessages, fetchedEntry]) => {
+      .then(([fetchedPoints, fetchedPhotos, fetchedMessages, fetchedEntry]) => {
         if (cancelled || !mapContainerRef.current) return
         if (mapRef.current) {
           mapRef.current.remove()
@@ -428,7 +386,6 @@ function TrackDetail({
           messageLayerRef.current = messageLayer
         }
         setPoints(fetchedPoints)
-        setNotes(fetchedNotes)
         setPhotos(fetchedPhotos)
         setMessages(fetchedMessages)
         const initialJournalText = fetchedEntry?.text ?? ''
@@ -543,7 +500,7 @@ function TrackDetail({
 
   // Keeps the map's photo pins in sync with the `photos` state, independent of the initial
   // track-load effect above — this also fires right after a fresh batch is imported, without
-  // needing to re-fetch points/notes or rebuild the whole map.
+  // needing to re-fetch points or rebuild the whole map.
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -558,14 +515,6 @@ function TrackDetail({
       photoMarkersRef.current.set(photo.id, marker)
     }
   }, [photos])
-
-  // Keep the "add note" timestamp field defaulted to wherever the timeline is currently
-  // scrubbed to, until the hiker starts editing it themselves.
-  useEffect(() => {
-    if (scrubMs !== null && !noteTimestampTouchedRef.current) {
-      setNoteTimestampInput(toDatetimeLocalValue(scrubMs))
-    }
-  }, [scrubMs])
 
   // The single place that moves the map marker to match an absolute epoch-ms instant — shared by
   // the slider's onChange below and by the zoom/pan handlers (which need to re-sync the marker
@@ -641,29 +590,6 @@ function TrackDetail({
   useEffect(() => {
     if (journalEditing) journalTextareaRef.current?.focus()
   }, [journalEditing])
-
-  const handleAddNote = async (e: FormEvent): Promise<void> => {
-    e.preventDefault()
-    const content = noteContent.trim()
-    if (!content) return
-    // A timed track's note is pinned to a moment on the timeline; a timeless track has no time
-    // axis at all, so its notes are simply stored without one (see JournalNote's doc comment).
-    if (isTimed && !noteTimestampInput) return
-
-    setSavingNote(true)
-    setNoteError('')
-    try {
-      const timestamp = isTimed ? new Date(noteTimestampInput).toISOString() : null
-      await window.api.notes.create(track.id, content, timestamp)
-      const updated = await window.api.notes.list(track.id)
-      setNotes(updated)
-      setNoteContent('')
-    } catch (err) {
-      setNoteError(cleanErrorMessage(err))
-    } finally {
-      setSavingNote(false)
-    }
-  }
 
   // Shared by the file-picker import below and the phone-upload event listener further down —
   // both paths resolve to the same PhotoImportResult | PhotoImportNeedsOffset shape, so a batch
@@ -777,8 +703,6 @@ function TrackDetail({
     }
   }
 
-  const selectedNote =
-    selectedItem?.kind === 'note' ? (notes.find((n) => n.id === selectedItem.id) ?? null) : null
   const selectedPhoto =
     selectedItem?.kind === 'photo' ? (photos.find((p) => p.id === selectedItem.id) ?? null) : null
   const selectedMessage =
@@ -792,8 +716,8 @@ function TrackDetail({
 
   // Left/right arrow keys step through the expanded photo overlay while it's open. Only attached
   // while a photo is actually selected, so arrow keys are otherwise left alone everywhere else on
-  // the page (e.g. moving the cursor in the note/journal text inputs) — and even then, a keypress
-  // that lands in an editable element is ignored rather than hijacked, in case one happens to be
+  // the page (e.g. moving the cursor in the journal text input) — and even then, a keypress that
+  // lands in an editable element is ignored rather than hijacked, in case one happens to be
   // focused underneath the overlay.
   useEffect(() => {
     if (!selectedPhoto) return
@@ -846,10 +770,10 @@ function TrackDetail({
   // The photo overlay covers the right half of the map — pan so the photo's own green marker
   // stays centered in the remaining visible (left) half instead of sitting under the overlay or
   // off-center. Reverts to wherever the map was centered before the overlay opened once it closes
-  // (or the selection moves to a note/message instead, which use the plain side panel). Also rings
-  // the open photo's own marker (and only that one) so it doesn't get lost among nearby dots once
-  // the map pans around it — re-applied here (rather than a separate effect) so it survives the
-  // marker elements being torn down and rebuilt whenever `photos` changes underneath a selection.
+  // (or the selection moves to a message instead, which uses the plain side panel). Also rings the
+  // open photo's own marker (and only that one) so it doesn't get lost among nearby dots once the
+  // map pans around it — re-applied here (rather than a separate effect) so it survives the marker
+  // elements being torn down and rebuilt whenever `photos` changes underneath a selection.
   useEffect(() => {
     for (const [id, marker] of photoMarkersRef.current) {
       marker.getElement()?.classList.toggle('photo-map-marker-selected', id === selectedPhoto?.id)
@@ -870,18 +794,14 @@ function TrackDetail({
 
   // A photo only earns a timeline marker when the track itself is timed (there's a time axis to
   // place it on) AND the photo has its own EXIF timestamp. Everything else — every photo on a
-  // timeless track, plus the rare timed-track photo with no EXIF timestamp at all — falls back
-  // to the plain list below, the same way timeless-track notes do.
+  // timeless track, plus the rare timed-track photo with no EXIF timestamp at all — has no
+  // timeline dot, but still appears in the photo gallery below the journal entry like any other.
   const timelinePhotos = isTimed ? photos.filter((p) => p.timestamp !== null) : []
-  const fallbackListPhotos = isTimed ? photos.filter((p) => p.timestamp === null) : photos
 
-  // Every marker-worthy item (notes with a timestamp, timed photos, messages — which always have
-  // one) combines into a single list and groups into clusters, so a couple of photos taken a
-  // minute apart render as one clickable badge instead of two unclickable overlapping dots.
+  // Every marker-worthy item (timed photos, messages — which always have a timestamp) combines
+  // into a single list and groups into clusters, so a couple of photos taken a minute apart
+  // render as one clickable badge instead of two unclickable overlapping dots.
   const timelineItems: TimelineItem[] = [
-    ...notes
-      .filter((n): n is JournalNote & { timestamp: string } => n.timestamp !== null)
-      .map((n) => ({ kind: 'note' as const, id: n.id, ms: Date.parse(n.timestamp) })),
     ...timelinePhotos.map((p) => ({
       kind: 'photo' as const,
       id: p.id,
@@ -925,9 +845,23 @@ function TrackDetail({
         }}
       >
         {new Date(item.ms).toLocaleTimeString()} &mdash; {TIMELINE_ITEM_KIND_LABEL[item.kind]}
-        {item.kind === 'photo' ? '' : `: ${timelineItemSummary(item, notes, messages)}`}
+        {item.kind === 'photo' ? '' : `: ${timelineItemSummary(item, messages)}`}
       </button>
     ))
+
+  // The selected photo's own loading/error/image state, shared between the two places it can be
+  // shown: the map-covering overlay (a track with GPS points) and the plain side panel (a
+  // zero-point track, which has no map for that overlay to sit over) — see mapDataConfirmedEmpty
+  // below. Kept as one JSX fragment so those two never drift out of sync with each other.
+  const selectedPhotoBody = (
+    <>
+      {photoDataLoading && <p className="empty">Loading photo…</p>}
+      {photoDataError && <p className="error">{photoDataError}</p>}
+      {!photoDataLoading && photoDataUri && (
+        <img className="photo-map-overlay-photo" src={photoDataUri} alt="" />
+      )}
+    </>
+  )
 
   return (
     <div className="track-detail-layout">
@@ -938,179 +872,172 @@ function TrackDetail({
           </button>
         </div>
 
-        <div className="track-header-row">
-          <div className="track-header-info">
-            {editingTrackInfo ? (
-              <form className="track-info-edit" onSubmit={handleSaveTrackInfo}>
-                <label htmlFor="track-name-input">Name</label>
+        <div className="track-header-info">
+          {editingTrackInfo ? (
+            <form className="track-info-edit" onSubmit={handleSaveTrackInfo}>
+              <label htmlFor="track-name-input">Name</label>
+              <input
+                id="track-name-input"
+                type="text"
+                className="track-info-edit-name"
+                value={trackNameInput}
+                onChange={(e) => setTrackNameInput(e.target.value)}
+                required
+                autoFocus
+              />
+              <label htmlFor="track-date-edit-input">Date</label>
+              <div className="track-info-edit-controls">
                 <input
-                  id="track-name-input"
-                  type="text"
-                  className="track-info-edit-name"
-                  value={trackNameInput}
-                  onChange={(e) => setTrackNameInput(e.target.value)}
+                  id="track-date-edit-input"
+                  type="date"
+                  value={trackDateInput}
+                  onChange={(e) => setTrackDateInput(e.target.value)}
                   required
-                  autoFocus
                 />
-                <label htmlFor="track-date-edit-input">Date</label>
-                <div className="track-info-edit-controls">
-                  <input
-                    id="track-date-edit-input"
-                    type="date"
-                    value={trackDateInput}
-                    onChange={(e) => setTrackDateInput(e.target.value)}
-                    required
-                  />
-                  <button type="submit" disabled={savingTrackInfo}>
-                    {savingTrackInfo ? 'Saving…' : 'Save'}
-                  </button>
+                <button type="submit" disabled={savingTrackInfo}>
+                  {savingTrackInfo ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelEditingTrackInfo}
+                  disabled={savingTrackInfo}
+                >
+                  Cancel
+                </button>
+              </div>
+              {trackInfoError && <p className="error">{trackInfoError}</p>}
+            </form>
+          ) : (
+            <>
+              <div className="track-title-row">
+                <h1>{track.name}</h1>
+                {points !== null && !isTimed && (
                   <button
                     type="button"
-                    onClick={handleCancelEditingTrackInfo}
-                    disabled={savingTrackInfo}
+                    className="track-title-edit-button"
+                    onClick={handleStartEditingTrackInfo}
                   >
-                    Cancel
+                    Edit
                   </button>
-                </div>
-                {trackInfoError && <p className="error">{trackInfoError}</p>}
-              </form>
-            ) : (
-              <>
-                <div className="track-title-row">
-                  <h1>{track.name}</h1>
-                  {points !== null && !isTimed && (
+                )}
+              </div>
+              <p className="track-date">{formatTrackDate(track.date)}</p>
+              {(previousTrack || nextTrack) && (
+                <div className="track-day-nav">
+                  {previousTrack && (
                     <button
                       type="button"
-                      className="track-title-edit-button"
-                      onClick={handleStartEditingTrackInfo}
+                      className="track-day-nav-button"
+                      onClick={() => onOpenTrack(previousTrack.id)}
                     >
-                      Edit
+                      &larr; {formatTrackDate(previousTrack.date)}
+                    </button>
+                  )}
+                  {nextTrack && (
+                    <button
+                      type="button"
+                      className="track-day-nav-button track-day-nav-button-next"
+                      onClick={() => onOpenTrack(nextTrack.id)}
+                    >
+                      {formatTrackDate(nextTrack.date)} &rarr;
                     </button>
                   )}
                 </div>
-                <p className="track-date">{formatTrackDate(track.date)}</p>
-                {(previousTrack || nextTrack) && (
-                  <div className="track-day-nav">
-                    {previousTrack && (
-                      <button
-                        type="button"
-                        className="track-day-nav-button"
-                        onClick={() => onOpenTrack(previousTrack.id)}
-                      >
-                        &larr; {formatTrackDate(previousTrack.date)}
-                      </button>
-                    )}
-                    {nextTrack && (
-                      <button
-                        type="button"
-                        className="track-day-nav-button track-day-nav-button-next"
-                        onClick={() => onOpenTrack(nextTrack.id)}
-                      >
-                        {formatTrackDate(nextTrack.date)} &rarr;
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
+              )}
+            </>
+          )}
+
+          <dl className="track-stats">
+            {trackStats && (
+              <div className="track-stat">
+                <dt className="track-stat-label">Distance</dt>
+                <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
+              </div>
             )}
+            {trackStartMs !== null && (
+              <div className="track-stat">
+                <dt className="track-stat-label">Start</dt>
+                <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
+              </div>
+            )}
+            {trackEndMs !== null && (
+              <div className="track-stat">
+                <dt className="track-stat-label">End</dt>
+                <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
+              </div>
+            )}
+            {trackStats !== null && trackStats.elevationGainFeet !== null && (
+              <div className="track-stat">
+                <dt className="track-stat-label">Elevation gain</dt>
+                <dd className="track-stat-value">
+                  {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
+                </dd>
+              </div>
+            )}
+          </dl>
 
-            <dl className="track-stats">
-              {trackStats && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">Distance</dt>
-                  <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
-                </div>
-              )}
-              {trackStartMs !== null && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">Start</dt>
-                  <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
-                </div>
-              )}
-              {trackEndMs !== null && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">End</dt>
-                  <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
-                </div>
-              )}
-              {trackStats !== null && trackStats.elevationGainFeet !== null && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">Elevation gain</dt>
-                  <dd className="track-stat-value">
-                    {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
-                  </dd>
-                </div>
-              )}
-            </dl>
-
-            <div className="dropdown-menu" ref={addDataMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowAddDataMenu((v) => !v)}
-                disabled={
-                  importingPhotos ||
-                  !!pendingOffsetImport ||
-                  importingMessages ||
-                  startingPhoneUpload
-                }
-              >
-                {importingPhotos
-                  ? 'Importing photos…'
-                  : importingMessages
-                    ? 'Importing…'
-                    : startingPhoneUpload
-                      ? 'Starting…'
-                      : 'Add data ▾'}
-              </button>
-              {showAddDataMenu && (
-                <div className="dropdown-menu-options">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      journalPreviewRef.current?.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'center'
-                      })
-                      handleStartEditingJournal()
-                    }}
-                  >
-                    Jump to journal entry
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      handleImportPhotos()
-                    }}
-                  >
-                    Import photos…
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      handleImportMessages()
-                    }}
-                  >
-                    Import messages (CSV)…
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      handleStartPhoneUpload()
-                    }}
-                    disabled={!!phoneUploadSession}
-                  >
-                    Upload photos from phone…
-                  </button>
-                </div>
-              )}
-            </div>
+          <div className="dropdown-menu" ref={addDataMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowAddDataMenu((v) => !v)}
+              disabled={
+                importingPhotos || !!pendingOffsetImport || importingMessages || startingPhoneUpload
+              }
+            >
+              {importingPhotos
+                ? 'Importing photos…'
+                : importingMessages
+                  ? 'Importing…'
+                  : startingPhoneUpload
+                    ? 'Starting…'
+                    : 'Add data ▾'}
+            </button>
+            {showAddDataMenu && (
+              <div className="dropdown-menu-options">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    journalPreviewRef.current?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center'
+                    })
+                    handleStartEditingJournal()
+                  }}
+                >
+                  Jump to journal entry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    handleImportPhotos()
+                  }}
+                >
+                  Import photos…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    handleImportMessages()
+                  }}
+                >
+                  Import messages (CSV)…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddDataMenu(false)
+                    handleStartPhoneUpload()
+                  }}
+                  disabled={!!phoneUploadSession}
+                >
+                  Upload photos from phone…
+                </button>
+              </div>
+            )}
           </div>
-
-          <PhotoSlideshow photos={photos} />
         </div>
 
         {phoneUploadSession && (
@@ -1213,11 +1140,7 @@ function TrackDetail({
                   &times;
                 </button>
               </div>
-              {photoDataLoading && <p className="empty">Loading photo…</p>}
-              {photoDataError && <p className="error">{photoDataError}</p>}
-              {!photoDataLoading && photoDataUri && (
-                <img className="photo-map-overlay-photo" src={photoDataUri} alt="" />
-              )}
+              {selectedPhotoBody}
             </div>
           )}
         </div>
@@ -1266,6 +1189,14 @@ function TrackDetail({
           )}
         </div>
 
+        <PhotoGallery
+          photos={photos}
+          onOpenPhoto={(photoId) => setSelectedItem({ kind: 'photo', id: photoId })}
+          onCaptionSaved={(updated) =>
+            setPhotos((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+          }
+        />
+
         {isTimed && trackStartMs !== null && trackEndMs !== null && scrubMs !== null && (
           <div className="timeline">
             <div className="timeline-track-row">
@@ -1309,7 +1240,7 @@ function TrackDetail({
                   {timelineClusters.map((cluster, index) => {
                     if (cluster.items.length === 1) {
                       const item = cluster.items[0]
-                      const summary = timelineItemSummary(item, notes, messages)
+                      const summary = timelineItemSummary(item, messages)
                       const time = new Date(item.ms).toLocaleTimeString()
                       return (
                         <button
@@ -1394,77 +1325,8 @@ function TrackDetail({
           </div>
         )}
 
-        {points !== null && points.length > 0 && (
-          <form className="note-form" onSubmit={handleAddNote}>
-            {isTimed && (
-              <input
-                type="datetime-local"
-                className="note-form-timestamp"
-                value={noteTimestampInput}
-                onChange={(e) => {
-                  noteTimestampTouchedRef.current = true
-                  setNoteTimestampInput(e.target.value)
-                }}
-                required
-              />
-            )}
-            <input
-              type="text"
-              className="note-form-content"
-              placeholder={isTimed ? 'Add a note at this moment…' : 'Add a note about this day…'}
-              value={noteContent}
-              onChange={(e) => setNoteContent(e.target.value)}
-              required
-            />
-            <button type="submit" disabled={savingNote}>
-              {savingNote ? 'Adding…' : 'Add note'}
-            </button>
-          </form>
-        )}
-        {noteError && <p className="error">{noteError}</p>}
-
-        {/* A timeless track has no timeline to place a marker on, so its notes are listed
-            plainly instead — still clickable, still opening the same side panel. */}
-        {!isTimed && notes.length > 0 && (
-          <ul className="note-list">
-            {notes.map((note) => (
-              <li key={note.id}>
-                <button
-                  type="button"
-                  className="note-list-item"
-                  onClick={() => setSelectedItem({ kind: 'note', id: note.id })}
-                >
-                  {note.content}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Same fallback shape as the note list above: a timeless track has no timeline for any
-            photo to sit on, and even a timed track can have a photo with no EXIF timestamp to
-            place on it — both land here instead of being silently dropped. */}
-        {fallbackListPhotos.length > 0 && (
-          <>
-            <h3 className="photo-list-heading">Photos</h3>
-            <ul className="photo-list">
-              {fallbackListPhotos.map((photo) => (
-                <li key={photo.id}>
-                  <button
-                    type="button"
-                    className="photo-list-item"
-                    onClick={() => setSelectedItem({ kind: 'photo', id: photo.id })}
-                  >
-                    {formatPhotoTitle(photo)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-
-        {/* Same timeless-track fallback as notes above: no time axis to place a dot on, so
-            messages are listed plainly instead (still clickable, still on the map). */}
+        {/* A timeless track has no timeline to place a dot on, so its messages are listed plainly
+            instead (still clickable, still on the map). */}
         {!isTimed && messages.length > 0 && (
           <ul className="message-list">
             {messages.map((message) => (
@@ -1483,20 +1345,10 @@ function TrackDetail({
       </div>
 
       {/* A zero-point track has no map for the usual photo-map-overlay to cover, so an expanded
-          photo uses the same plain side panel as a note/message instead. */}
+          photo uses the same plain side panel as a message instead. */}
       {selectedPhoto && mapDataConfirmedEmpty && (
         <SidePanel title={formatPhotoTitle(selectedPhoto)} onClose={() => setSelectedItem(null)}>
-          {photoDataLoading && <p className="empty">Loading photo…</p>}
-          {photoDataError && <p className="error">{photoDataError}</p>}
-          {!photoDataLoading && photoDataUri && (
-            <img className="photo-map-overlay-photo" src={photoDataUri} alt="" />
-          )}
-        </SidePanel>
-      )}
-
-      {selectedNote && (
-        <SidePanel title={formatNoteTitle(selectedNote)} onClose={() => setSelectedItem(null)}>
-          <p>{selectedNote.content}</p>
+          {selectedPhotoBody}
         </SidePanel>
       )}
 

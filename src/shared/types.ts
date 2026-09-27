@@ -48,18 +48,6 @@ export interface Entry {
   updatedAt: string
 }
 
-// A hiker-authored note pinned to a moment on a track's timeline (issue #7). `timestamp` is the
-// ISO instant the note refers to, and is null for a note on a timeless track (no time axis to
-// place it on — see TrackPoint.timestamp above for the same distinction). Map position (lat/lng)
-// is deliberately not modeled here; that's future work, out of scope for this slice.
-export interface JournalNote {
-  id: number
-  trackId: number
-  content: string
-  timestamp: string | null
-  createdAt: string
-}
-
 // A photo imported into a track (issue #9). `filepath` points at the app-managed copy under
 // userData (see the main-process File Storage Manager) — never the hiker's original file
 // location, which may move or be deleted after import. `timestamp` comes from the photo's own
@@ -68,7 +56,8 @@ export interface JournalNote {
 // when present, otherwise from the Position Interpolator against the track's points — and are
 // both null when neither source can place the photo (no EXIF GPS AND the track is timeless, so
 // there's no time axis to interpolate against either). A null-position photo still appears in a
-// track's photo list, it's just not shown as a map pin.
+// track's photo list, it's just not shown as a map pin. `caption` is hiker-authored, free text,
+// null until they add one — entirely independent of the photo's own EXIF data.
 export interface Photo {
   id: number
   trackId: number
@@ -76,6 +65,7 @@ export interface Photo {
   timestamp: string | null
   lat: number | null
   lng: number | null
+  caption: string | null
   createdAt: string
 }
 
@@ -121,11 +111,11 @@ export interface PhotoImportResult {
   duplicatesSkipped: number
 }
 
-// A satellite check-in message imported from a device export (issue #11). Unlike a JournalNote,
-// timestamp/lat/lng are never null: a satellite messenger transmits its own GPS position with
-// every message, so a message is never dependent on the track's own timestamps/interpolation the
-// way a photo would be. `source` is a literal union so future sources (e.g. 'spot') type-check
-// cleanly when added — for now only 'inreach' is ever written.
+// A satellite check-in message imported from a device export (issue #11). timestamp/lat/lng are
+// never null: a satellite messenger transmits its own GPS position with every message, so a
+// message is never dependent on the track's own timestamps/interpolation the way a photo would
+// be. `source` is a literal union so future sources (e.g. 'spot') type-check cleanly when added —
+// for now only 'inreach' is ever written.
 export interface Message {
   id: number
   trackId: number

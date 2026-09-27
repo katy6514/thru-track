@@ -5,7 +5,7 @@
 // of each other group into one cluster marker that opens a small picker on click.
 
 export interface TimelineItem {
-  kind: 'note' | 'photo' | 'message'
+  kind: 'photo' | 'message'
   id: number
   ms: number
 }

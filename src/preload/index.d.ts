@@ -6,7 +6,6 @@ import type {
   Entry,
   GpxImportNeedsDate,
   GpxImportNeedsStartDate,
-  JournalNote,
   Photo,
   PendingPhoto,
   PhotoImportNeedsOffset,
@@ -37,10 +36,6 @@ interface Api {
     get: (trackId: number) => Promise<Entry | null>
     save: (trackId: number, text: string) => Promise<Entry>
   }
-  notes: {
-    create: (trackId: number, content: string, timestamp: string | null) => Promise<JournalNote>
-    list: (trackId: number) => Promise<JournalNote[]>
-  }
   photos: {
     list: (trackId: number) => Promise<Photo[]>
     import: (trackId: number) => Promise<PhotoImportResult | PhotoImportNeedsOffset>
@@ -50,6 +45,7 @@ interface Api {
       offsetMinutes: number
     ) => Promise<PhotoImportResult>
     getDataUri: (photoId: number) => Promise<string>
+    updateCaption: (photoId: number, caption: string) => Promise<Photo>
   }
   messages: {
     importCsv: (trackId: number) => Promise<Message[] | null>

@@ -152,7 +152,7 @@ ul {
 
 /* Two-font system, same pairing used throughout the app's own docs/guide content: a geometric
    display sans for headings and interactive controls (the "signage" layer — titles, buttons,
-   labels), and a humanist serif for the reading experience (journal entries, notes, prose) —
+   labels), and a humanist serif for the reading experience (journal entries, prose) —
    since this app's real content is what a hiker wrote and read, that deserves a text face built
    for reading, not a UI grotesque. */
 :root {

@@ -298,7 +298,7 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   const handleDelete = async (track: Track): Promise<void> => {
     if (
       !window.confirm(
-        `Delete "${track.name}" and everything in it (photos, notes, messages, journal entry)? ` +
+        `Delete "${track.name}" and everything in it (photos, messages, journal entry)? ` +
           `This cannot be undone.`
       )
     )

@@ -66,7 +66,7 @@ function TripList({ onSelectTrip, onShowHowTo }: TripListProps): React.JSX.Eleme
     if (
       !window.confirm(
         `Delete "${trip.name}"? This deletes every day in this trip and everything in them ` +
-          `(photos, notes, messages, journal entries). This cannot be undone.`
+          `(photos, messages, journal entries). This cannot be undone.`
       )
     )
       return

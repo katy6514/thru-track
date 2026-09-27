@@ -465,75 +465,6 @@ describe('Repository journal entries', () => {
   })
 })
 
-describe('Repository journal notes', () => {
-  let repo: Repository
-  let trackId: number
-
-  beforeEach(() => {
-    const db = new Database(':memory:')
-    migrate(db)
-    repo = new Repository(db)
-    const tripId = repo.createTrip('PCT 2026').id
-    trackId = importOneTrack(repo, tripId, sampleGpx()).id
-  })
-
-  it('returns an empty list for a track with no notes yet', () => {
-    expect(repo.listNotesForTrack(trackId)).toEqual([])
-  })
-
-  it('creates a note with a timestamp', () => {
-    const note = repo.createNote(trackId, 'Great view here', '2026-07-01T14:00:30Z')
-    expect(note.trackId).toBe(trackId)
-    expect(note.content).toBe('Great view here')
-    expect(note.timestamp).toBe('2026-07-01T14:00:30Z')
-    expect(note.id).toBeTypeOf('number')
-
-    expect(repo.listNotesForTrack(trackId)).toEqual([note])
-  })
-
-  it('creates a note with a null timestamp (the timeless-track case)', () => {
-    const note = repo.createNote(trackId, 'No specific time for this one', null)
-    expect(note.timestamp).toBeNull()
-  })
-
-  it('trims whitespace from note content', () => {
-    const note = repo.createNote(trackId, '  Trimmed  ', null)
-    expect(note.content).toBe('Trimmed')
-  })
-
-  it('rejects empty or whitespace-only note content', () => {
-    expect(() => repo.createNote(trackId, '', null)).toThrow()
-    expect(() => repo.createNote(trackId, '   ', null)).toThrow()
-  })
-
-  it('lists notes for a track ordered by timestamp ascending', () => {
-    repo.createNote(trackId, 'Second', '2026-07-01T15:00:00Z')
-    repo.createNote(trackId, 'First', '2026-07-01T14:00:00Z')
-    const notes = repo.listNotesForTrack(trackId)
-    expect(notes.map((n) => n.content)).toEqual(['First', 'Second'])
-  })
-
-  it('does not list notes belonging to a different track', () => {
-    const otherTrackId = importOneTrack(
-      repo,
-      repo.createTrip('Other Trip').id,
-      sampleGpx({ points: [{ lat: '1', lon: '1', time: '2026-07-02T14:00:00Z' }] })
-    ).id
-
-    repo.createNote(trackId, 'Note for track one', null)
-    repo.createNote(otherTrackId, 'Note for track two', null)
-
-    expect(repo.listNotesForTrack(trackId).map((n) => n.content)).toEqual(['Note for track one'])
-    expect(repo.listNotesForTrack(otherTrackId).map((n) => n.content)).toEqual([
-      'Note for track two'
-    ])
-  })
-
-  it('throws when creating a note for a track that does not exist', () => {
-    expect(() => repo.createNote(999, 'orphan note', null)).toThrow()
-  })
-})
-
 describe('Repository photos', () => {
   let repo: Repository
   let trackId: number
@@ -819,14 +750,13 @@ describe('Repository cascade deletion', () => {
   })
 
   // Builds a fully-populated track (points come from the GPX import itself) plus one of every
-  // child row type this track owns: an entry, a journal note, two photos, and a message.
+  // child row type this track owns: an entry, two photos, and a message.
   function buildFullTrack(
     tripId: number,
     label: string
   ): { trackId: number; photoPaths: string[] } {
     const track = importOneTrack(repo, tripId, sampleGpx({ name: `${label} track` }))
     repo.saveEntry(track.id, `${label} entry text`)
-    repo.createNote(track.id, `${label} note`, '2026-07-01T14:00:30Z')
     const photoA = repo.createPhoto(track.id, `/managed/${label}-a.jpg`, null, null, null, null)
     const photoB = repo.createPhoto(track.id, `/managed/${label}-b.jpg`, null, 46.85, -121.75, null)
     repo.importInreachMessages(track.id, sampleInreachCsv())
@@ -843,7 +773,6 @@ describe('Repository cascade deletion', () => {
     return {
       track_points: count('track_points'),
       entries: count('entries'),
-      journal_notes: count('journal_notes'),
       photos: count('photos'),
       messages: count('messages')
     }
@@ -865,7 +794,6 @@ describe('Repository cascade deletion', () => {
       expect(trackChildRowCounts(trackId)).toEqual({
         track_points: 0,
         entries: 0,
-        journal_notes: 0,
         photos: 0,
         messages: 0
       })
@@ -882,7 +810,6 @@ describe('Repository cascade deletion', () => {
       expect(trackChildRowCounts(siblingId)).toEqual({
         track_points: 2,
         entries: 1,
-        journal_notes: 1,
         photos: 2,
         messages: 2
       })
@@ -919,14 +846,12 @@ describe('Repository cascade deletion', () => {
       expect(trackChildRowCounts(track1Id)).toEqual({
         track_points: 0,
         entries: 0,
-        journal_notes: 0,
         photos: 0,
         messages: 0
       })
       expect(trackChildRowCounts(track2Id)).toEqual({
         track_points: 0,
         entries: 0,
-        journal_notes: 0,
         photos: 0,
         messages: 0
       })

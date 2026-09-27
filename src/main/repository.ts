@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3'
-import type { Trip, Track, TrackPoint, Entry, JournalNote, Photo, Message } from '../shared/types'
+import type { Trip, Track, TrackPoint, Entry, Photo, Message } from '../shared/types'
 import { parseGpx, buildGpx, type ParsedGpxTrack } from './gpxParser'
 import { parseInreachCsv } from './inreachCsvParser'
 import type { TrackTimeRange } from '../shared/timezoneOffsetDetector'
@@ -115,14 +115,6 @@ interface EntryRow {
   updated_at: string
 }
 
-interface JournalNoteRow {
-  id: number
-  track_id: number
-  content: string
-  timestamp: string | null
-  created_at: string
-}
-
 interface PhotoRow {
   id: number
   track_id: number
@@ -130,6 +122,7 @@ interface PhotoRow {
   timestamp: string | null
   lat: number | null
   lng: number | null
+  caption: string | null
   created_at: string
 }
 
@@ -166,16 +159,6 @@ function toEntry(row: EntryRow): Entry {
   return { id: row.id, trackId: row.track_id, text: row.text, updatedAt: row.updated_at }
 }
 
-function toJournalNote(row: JournalNoteRow): JournalNote {
-  return {
-    id: row.id,
-    trackId: row.track_id,
-    content: row.content,
-    timestamp: row.timestamp,
-    createdAt: row.created_at
-  }
-}
-
 function toPhoto(row: PhotoRow): Photo {
   return {
     id: row.id,
@@ -184,6 +167,7 @@ function toPhoto(row: PhotoRow): Photo {
     timestamp: row.timestamp,
     lat: row.lat,
     lng: row.lng,
+    caption: row.caption,
     createdAt: row.created_at
   }
 }
@@ -206,12 +190,6 @@ function toMessage(row: MessageRow): Message {
 function requireName(name: string, label: string = 'Trip'): string {
   const trimmed = name.trim()
   if (!trimmed) throw new Error(`${label} name must not be empty`)
-  return trimmed
-}
-
-function requireContent(content: string): string {
-  const trimmed = content.trim()
-  if (!trimmed) throw new Error('Note content must not be empty')
   return trimmed
 }
 
@@ -247,10 +225,10 @@ export class Repository {
   }
 
   // Cascade-deletes a single track and everything hanging off it: track_points, entries,
-  // journal_notes, messages, and photos rows (children before the parent row, since foreign_keys
-  // is ON and there's no ON DELETE CASCADE configured anywhere — see db.ts), then the track row
-  // itself. All in one transaction: either the whole track and its children disappear, or (on
-  // error) none of it does.
+  // messages, and photos rows (children before the parent row, since foreign_keys is ON and
+  // there's no ON DELETE CASCADE configured anywhere — see db.ts), then the track row itself. All
+  // in one transaction: either the whole track and its children disappear, or (on error) none of
+  // it does.
   //
   // Deleting a photo's *file* on disk is a side effect outside the DB transaction, and this class
   // is kept a pure-DB-transaction concern (see fileStorageManager.ts for the actual filesystem
@@ -271,7 +249,6 @@ export class Repository {
 
     this.db.prepare('DELETE FROM track_points WHERE track_id = ?').run(id)
     this.db.prepare('DELETE FROM entries WHERE track_id = ?').run(id)
-    this.db.prepare('DELETE FROM journal_notes WHERE track_id = ?').run(id)
     this.db.prepare('DELETE FROM messages WHERE track_id = ?').run(id)
     this.db.prepare('DELETE FROM photos WHERE track_id = ?').run(id)
 
@@ -504,42 +481,12 @@ export class Repository {
     )
   }
 
-  // `timestamp` is the ISO instant the note refers to on the track's timeline, or null for a
-  // note on a timeless track (no time axis to place it on — see JournalNote's doc comment).
-  // Unlike entries, a track can have any number of notes, so this is a plain insert, not an
-  // upsert. Inserting against a nonexistent trackId throws via the `foreign_keys = ON` pragma
-  // set in migrate(), same as importGpxTrack/saveEntry.
-  createNote(trackId: number, content: string, timestamp: string | null): JournalNote {
-    const trimmed = requireContent(content)
-    const now = new Date().toISOString()
-    const info = this.db
-      .prepare(
-        'INSERT INTO journal_notes (track_id, content, timestamp, created_at) VALUES (?, ?, ?, ?)'
-      )
-      .run(trackId, trimmed, timestamp, now)
-    return toJournalNote(
-      this.db
-        .prepare('SELECT * FROM journal_notes WHERE id = ?')
-        .get(info.lastInsertRowid) as JournalNoteRow
-    )
-  }
-
-  listNotesForTrack(trackId: number): JournalNote[] {
-    // Same `id ASC` tiebreak as getTrackPoints: a no-op when every note has a distinct real
-    // timestamp, but for a timeless track's notes (timestamp always null) it falls back to
-    // creation order, which is the only sensible order available.
-    const rows = this.db
-      .prepare('SELECT * FROM journal_notes WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
-      .all(trackId) as JournalNoteRow[]
-    return rows.map(toJournalNote)
-  }
-
   // `filepath` is the already-copied managed path (see main/fileStorageManager.ts) — this method
   // only persists metadata, it doesn't touch the filesystem itself. `timestamp`/`lat`/`lng` are
   // each independently nullable: see Photo's doc comment in shared/types.ts for what each null
-  // combination means. Like createNote, a track can have any number of photos, so this is a
-  // plain insert, not an upsert, and inserting against a nonexistent trackId throws via the
-  // `foreign_keys = ON` pragma set in migrate().
+  // combination means. A track can have any number of photos, so this is a plain insert, not an
+  // upsert, and inserting against a nonexistent trackId throws via the `foreign_keys = ON` pragma
+  // set in migrate().
   createPhoto(
     trackId: number,
     filepath: string,
@@ -564,6 +511,18 @@ export class Repository {
     return row ? toPhoto(row) : null
   }
 
+  // Hiker-authored, added any time after import — entirely separate from the photo's own EXIF
+  // data. Blank (or whitespace-only) input clears the caption back to null rather than storing an
+  // empty string, since the two read identically in the UI (no caption shown either way).
+  updatePhotoCaption(id: number, caption: string): Photo {
+    const trimmed = caption.trim()
+    const info = this.db
+      .prepare('UPDATE photos SET caption = ? WHERE id = ?')
+      .run(trimmed === '' ? null : trimmed, id)
+    if (info.changes === 0) throw new Error(`Photo ${id} not found`)
+    return toPhoto(this.db.prepare('SELECT * FROM photos WHERE id = ?').get(id) as PhotoRow)
+  }
+
   // Used to skip re-importing a photo already stored for this track — scoped per track (not
   // global) since the same photo genuinely belonging to two different tracks isn't a mistake.
   photoContentHashExists(trackId: number, contentHash: string): boolean {
@@ -574,7 +533,7 @@ export class Repository {
   }
 
   listPhotosForTrack(trackId: number): Photo[] {
-    // Same `id ASC` tiebreak as listNotesForTrack: a no-op once every photo has a distinct real
+    // Same `id ASC` tiebreak as getTrackPoints: a no-op once every photo has a distinct real
     // timestamp, but falls back to creation order for a timeless track's photos (timestamp
     // always null there).
     const rows = this.db
@@ -624,9 +583,8 @@ export class Repository {
   }
 
   listMessagesForTrack(trackId: number): Message[] {
-    // Same `id ASC` tiebreak as getTrackPoints/listNotesForTrack for stable ordering, though in
-    // practice a message's timestamp is never null so this rarely matters in the same way it
-    // does for a timeless track's notes.
+    // Same `id ASC` tiebreak as getTrackPoints for stable ordering, though in practice a
+    // message's timestamp is never null so this rarely matters the way it does elsewhere.
     const rows = this.db
       .prepare('SELECT * FROM messages WHERE track_id = ? ORDER BY timestamp ASC, id ASC')
       .all(trackId) as MessageRow[]

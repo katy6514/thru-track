@@ -7,7 +7,6 @@ import type {
   Entry,
   GpxImportNeedsDate,
   GpxImportNeedsStartDate,
-  JournalNote,
   Photo,
   PendingPhoto,
   PhotoImportNeedsOffset,
@@ -46,11 +45,6 @@ const api = {
     save: (trackId: number, text: string): Promise<Entry> =>
       ipcRenderer.invoke('entries:save', trackId, text)
   },
-  notes: {
-    create: (trackId: number, content: string, timestamp: string | null): Promise<JournalNote> =>
-      ipcRenderer.invoke('notes:create', trackId, content, timestamp),
-    list: (trackId: number): Promise<JournalNote[]> => ipcRenderer.invoke('notes:list', trackId)
-  },
   photos: {
     list: (trackId: number): Promise<Photo[]> => ipcRenderer.invoke('photos:list', trackId),
     import: (trackId: number): Promise<PhotoImportResult | PhotoImportNeedsOffset> =>
@@ -62,7 +56,9 @@ const api = {
     ): Promise<PhotoImportResult> =>
       ipcRenderer.invoke('photos:importWithOffset', trackId, pending, offsetMinutes),
     getDataUri: (photoId: number): Promise<string> =>
-      ipcRenderer.invoke('photos:getDataUri', photoId)
+      ipcRenderer.invoke('photos:getDataUri', photoId),
+    updateCaption: (photoId: number, caption: string): Promise<Photo> =>
+      ipcRenderer.invoke('photos:updateCaption', photoId, caption)
   },
   messages: {
     importCsv: (trackId: number): Promise<Message[] | null> =>

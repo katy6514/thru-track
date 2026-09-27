@@ -455,7 +455,7 @@ button:hover {
 }
 
 /* Flex row so the side panel appears as its own column next to the map/timeline, rather than
-   covering them — the side panel is only rendered when an item (e.g. a note) is selected. */
+   covering them — the side panel is only rendered when an item (e.g. a message) is selected. */
 .track-detail-layout {
   max-width: 1240px;
   width: 100%;
@@ -503,46 +503,8 @@ button:hover {
   margin-left: auto;
 }
 
-/* Title, date and the stats table sit to the left; the photo slideshow (PhotoSlideshow.tsx),
-   when the track has any photos at all, fills the rest of the row's width and — via the default
-   flex `stretch` cross-axis behavior — the same height as that left column, without either side
-   needing to know the other's actual height. Wraps at narrow widths rather than squeezing. */
-.track-header-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-
 .track-header-info {
-  flex: 1;
-  min-width: 260px;
-}
-
-/* No min-height of its own on purpose — the row's own height (and so this element's, since
-   flex's default `stretch` cross-axis behavior makes it match its sibling) is driven entirely by
-   track-header-info's natural content height. */
-.track-photo-slideshow {
-  position: relative;
-  flex: 0 0 320px;
-  border-radius: 8px;
-  overflow: hidden;
-  background-color: var(--color-background-soft);
-}
-
-.track-photo-slideshow-image {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  /* `contain` (not `cover`) so a photo keeps its own aspect ratio instead of being cropped to
-     match the box — every photo, portrait or landscape, ends up centered in the same spot
-     (object-position's own default) rather than filling the whole box differently each time. */
-  object-fit: contain;
-  object-position: center;
-  opacity: 0;
-  transition-property: opacity;
-  transition-timing-function: ease;
+  margin-bottom: 24px;
 }
 
 /* Houses the title next to its Edit button (untimed tracks only — see canEditTrackInfo in
@@ -760,6 +722,70 @@ button:hover {
   font-size: 14px;
 }
 
+.photo-gallery {
+  margin-top: 16px;
+}
+
+.photo-gallery-heading {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+/* Fills as many equal-ish columns as fit at 140px each, rather than a fixed column count — so a
+   day with 3 photos and a day with 40 both lay out sensibly without their own separate CSS. */
+.photo-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.photo-gallery-item {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.photo-gallery-thumb-button {
+  padding: 0;
+  border: none;
+  background: none;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--color-background-soft);
+}
+
+.photo-gallery-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* `cover` (not `contain`, unlike the old header slideshow) — a grid of thumbnails reads as a
+     tidy wall of equal squares here, not a single focal image, so cropping to fill is the right
+     trade-off in this context. */
+  object-fit: cover;
+}
+
+.photo-gallery-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+}
+
+.photo-gallery-caption-input {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  background-color: transparent;
+  border: 1px solid transparent;
+}
+
+.photo-gallery-caption-input:hover,
+.photo-gallery-caption-input:focus {
+  background-color: var(--color-background-soft);
+  border-color: var(--ev-c-gray-2);
+  border-radius: 4px;
+}
+
 .timeline {
   margin-top: 16px;
 }
@@ -809,7 +835,7 @@ button:hover {
 }
 
 /* Markers sit in a thin strip just under the slider, positioned along the same 0-100% axis as
-   its min/max range so a note lines up with where it actually happened in the day. In normal
+   its min/max range so an item lines up with where it actually happened in the day. In normal
    document flow (not absolutely positioned against .timeline-track) so its width tracks the
    slider's the same simple way the slider's own width does — an absolutely-positioned strip
    pinned via left/right:0 depends on correctly re-measuring its flex-shrinking ancestor
@@ -825,6 +851,9 @@ button:hover {
   pointer-events: none;
 }
 
+/* No background-color of its own — every real marker also carries one of the modifier classes
+   below (a TimelineItem is always 'photo' or 'message'), which always supplies the actual color,
+   so this base class only ever needs to provide the shared shape/position. */
 .timeline-marker {
   position: absolute;
   top: 2px;
@@ -834,17 +863,12 @@ button:hover {
   padding: 0;
   border: 2px solid var(--color-background);
   border-radius: 50%;
-  background-color: var(--accent-note);
   pointer-events: auto;
   cursor: pointer;
 }
 
-.timeline-marker:hover {
-  background-color: var(--accent-note-hover);
-}
-
-/* Same shape/positioning as .timeline-marker, distinguished by color and a square rather than
-   round outline so a photo reads differently from a note at a glance on the timeline strip. */
+/* Square rather than round, so a photo reads differently from a message at a glance on the
+   timeline strip. */
 .timeline-marker-photo {
   border-radius: 3px;
   background-color: var(--accent-photo);
@@ -854,9 +878,9 @@ button:hover {
   background-color: var(--accent-photo-hover);
 }
 
-/* A message dot is shaped differently from a note dot (diamond vs. circle) and colored teal to
-   match its map marker, so the two item types stay visually distinguishable when both appear on
-   the same timeline. */
+/* A message dot is shaped differently (diamond vs. circle) and colored teal to match its map
+   marker, so the two item types stay visually distinguishable when both appear on the same
+   timeline. */
 .timeline-marker-message {
   top: 3px;
   width: 9px;
@@ -881,6 +905,8 @@ button:hover {
   pointer-events: auto;
 }
 
+/* Neutral gray rather than either item-kind color, since a cluster can hold a mix of photos and
+   messages — same color pair as .timeline-edge-bucket-button, the other mixed-kind badge. */
 .timeline-marker-cluster {
   position: relative;
   display: flex;
@@ -891,8 +917,8 @@ button:hover {
   padding: 0;
   border: 2px solid var(--color-background);
   border-radius: 50%;
-  background-color: var(--accent-note);
-  color: var(--ev-c-white);
+  background-color: var(--ev-c-gray-2);
+  color: var(--color-text);
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
@@ -900,7 +926,7 @@ button:hover {
 }
 
 .timeline-marker-cluster:hover {
-  background-color: var(--accent-note-hover);
+  background-color: var(--ev-c-gray-1);
 }
 
 .timeline-cluster-options button {
@@ -969,76 +995,6 @@ button:hover {
 
 .timeline-gap-notice {
   color: var(--accent-danger);
-}
-
-.note-form {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 24px;
-}
-
-.note-form-timestamp {
-  background-color: var(--color-background-soft);
-  border: 1px solid var(--ev-c-gray-2);
-  border-radius: 6px;
-  padding: 8px 12px;
-  color: var(--color-text);
-  font-size: 14px;
-}
-
-.note-form-content {
-  flex: 1;
-}
-
-.note-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.note-list-item {
-  width: 100%;
-  text-align: left;
-  background-color: var(--color-background-soft);
-  border: none;
-  border-radius: 8px;
-  padding: 12px 16px;
-  color: var(--color-text);
-  font-weight: normal;
-}
-
-.note-list-item:hover {
-  background-color: var(--color-background-mute);
-}
-
-.photo-list-heading {
-  margin-top: 16px;
-  font-size: 14px;
-  color: var(--ev-c-text-2);
-}
-
-.photo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.photo-list-item {
-  width: 100%;
-  text-align: left;
-  background-color: var(--color-background-soft);
-  border: none;
-  border-radius: 8px;
-  padding: 12px 16px;
-  color: var(--color-text);
-  font-weight: normal;
-}
-
-.photo-list-item:hover {
-  background-color: var(--color-background-mute);
 }
 
 /* Same green used for .timeline-marker-photo, so a photo's map pin and its timeline marker read
@@ -1230,10 +1186,6 @@ button:hover {
   background-color: var(--accent-trail);
 }
 
-.how-to-swatch-note {
-  background-color: var(--accent-note);
-}
-
 .how-to-swatch-photo {
   border-radius: 3px;
   background-color: var(--accent-photo);
@@ -1410,14 +1362,6 @@ button:hover {
   text-transform: uppercase;
   color: var(--accent-trail-label);
   margin-bottom: 6px;
-}
-
-.how-to-callout-note {
-  border-left-color: var(--accent-note);
-}
-
-.how-to-callout-note .how-to-callout-label {
-  color: var(--accent-note);
 }
 
 .how-to-callout-photo {

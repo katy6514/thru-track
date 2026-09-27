@@ -43,28 +43,12 @@ export function migrate(database: Database.Database): void {
       updated_at TEXT NOT NULL
     );
 
-    -- Unlike entries (one per track), a track can have many notes. timestamp is nullable for
-    -- the same reason track_points.timestamp is: a note added to a timeless (CalTopo-retraced)
-    -- track has no time axis to place it on, so it's stored with a null timestamp and simply
-    -- isn't shown on a timeline (there isn't one to show it on). Position (lat/lng) is
-    -- deliberately not modeled here — placing a note on the map is out of scope for issue #7.
-    CREATE TABLE IF NOT EXISTS journal_notes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      track_id INTEGER NOT NULL REFERENCES tracks(id),
-      content TEXT NOT NULL,
-      timestamp TEXT,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_journal_notes_track_id ON journal_notes(track_id);
-
     -- filepath is the app-managed copy under userData (see the File Storage Manager in
     -- main/fileStorageManager.ts), never the hiker's original file location. timestamp comes
     -- from EXIF DateTimeOriginal and is nullable for a photo with no EXIF timestamp at all.
     -- lat/lng come from EXIF GPS when present, otherwise from the Position Interpolator against
-    -- the track's points, and are both nullable for the same reason journal_notes.timestamp is
-    -- nullable: no EXIF GPS AND a timeless track (no time axis to interpolate against) leaves no
-    -- position available at all.
+    -- the track's points, and are both nullable for the same reason: no EXIF GPS AND a timeless
+    -- track (no time axis to interpolate against) leaves no position available at all.
     -- content_hash (SHA-256 of the file's bytes) is how a re-imported duplicate is recognized —
     -- deliberately not timestamp-based, since two genuinely different photos taken in the same
     -- second (a burst) are common and must both be kept.
@@ -76,6 +60,7 @@ export function migrate(database: Database.Database): void {
       lat REAL,
       lng REAL,
       content_hash TEXT,
+      caption TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -84,12 +69,12 @@ export function migrate(database: Database.Database): void {
 
     -- A satellite message imported from a device export (currently only Garmin inReach CSV
     -- exports, hence source = 'inreach' hardcoded at write time — the PRD's data model
-    -- anticipates other sources, e.g. 'spot', later). Unlike a journal note, a message always
-    -- carries its own GPS position straight from the export (a satellite messenger transmits
-    -- location with every check-in), so lat/lng are NOT NULL here, and timestamp is NOT NULL
-    -- too since a message's own absolute timestamp is independent of whether the track it's
-    -- attached to happens to have GPS timestamps of its own (see the timeless-track handling in
-    -- gpxParser.ts / TrackPoint.timestamp).
+    -- anticipates other sources, e.g. 'spot', later). A message always carries its own GPS
+    -- position straight from the export (a satellite messenger transmits location with every
+    -- check-in), so lat/lng are NOT NULL here, and timestamp is NOT NULL too since a message's
+    -- own absolute timestamp is independent of whether the track it's attached to happens to
+    -- have GPS timestamps of its own (see the timeless-track handling in gpxParser.ts /
+    -- TrackPoint.timestamp).
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       track_id INTEGER NOT NULL REFERENCES tracks(id),
@@ -106,6 +91,23 @@ export function migrate(database: Database.Database): void {
 
   migrateTrackPointsTimestampNullable(database)
   migratePhotosContentHash(database)
+  migratePhotosCaption(database)
+  dropJournalNotes(database)
+}
+
+// The journal-note feature (a short text pinned to a moment on a track's timeline, distinct from
+// the per-track journal entry) was removed — the note-taking flow was too similar to the journal
+// entry, with no real distinction a hiker could feel. Dropping the table (not just leaving it
+// unused) since nothing else references it anymore; a fresh CREATE TABLE IF NOT EXISTS above
+// never runs against an existing database that still has it, so this cleans those up explicitly.
+// A no-op (single fast PRAGMA read) once a database has already been migrated.
+function dropJournalNotes(database: Database.Database): void {
+  const tables = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'journal_notes'")
+    .all()
+  if (tables.length === 0) return
+
+  database.exec('DROP TABLE journal_notes')
 }
 
 // photos.content_hash was added after photos already existed in the wild — a plain ADD COLUMN
@@ -121,6 +123,16 @@ function migratePhotosContentHash(database: Database.Database): void {
     ALTER TABLE photos ADD COLUMN content_hash TEXT;
     CREATE INDEX IF NOT EXISTS idx_photos_track_id_content_hash ON photos(track_id, content_hash);
   `)
+}
+
+// photos.caption was added after photos already existed in the wild too — same plain nullable
+// ADD COLUMN as content_hash above. Existing photo rows get a NULL caption, which just means "no
+// caption yet", the same state a freshly-imported photo starts in — no backfill needed.
+function migratePhotosCaption(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(photos)').all() as { name: string }[]
+  if (columns.some((c) => c.name === 'caption')) return
+
+  database.exec('ALTER TABLE photos ADD COLUMN caption TEXT')
 }
 
 // track_points.timestamp used to be NOT NULL, before timeless (CalTopo-retrace-style) tracks

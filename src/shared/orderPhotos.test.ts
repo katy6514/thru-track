@@ -10,6 +10,7 @@ function photo(id: number, timestamp: string | null): Photo {
     timestamp,
     lat: null,
     lng: null,
+    caption: null,
     createdAt: '2026-09-15T00:00:00Z'
   }
 }
