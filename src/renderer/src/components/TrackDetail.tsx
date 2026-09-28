@@ -57,15 +57,20 @@ interface TrackDetailProps {
   // buttons below, so this component doesn't need its own separate fetch of the same list.
   tripTracks: Track[]
   onBack: () => void
-  // Called after a successful name/date edit (see the track-info-edit form below) so the parent
-  // — which owns the selected Track object this component only receives as a prop — can update
-  // its own copy. Without this the header would keep showing the pre-edit name/date until the
-  // hiker navigated away and back.
+  // Called after a successful name/start-location/end-location edit (see the track-info-edit
+  // form below) so the parent — which owns the selected Track object this component only
+  // receives as a prop — can update its own copy. Without this the header would keep showing the
+  // pre-edit values until the hiker navigated away and back.
   onTrackUpdated: (track: Track) => void
   // Switches the parent's selected track to the given id — used by the photo-offset prompt's
   // "Go to <day> instead" suggestion (see suggestedTrack below), and by the previous/next-day
   // header buttons, so a hiker can jump straight to another day without backing out to the list.
   onOpenTrack: (trackId: number) => void
+  // Called after the track is actually deleted (see the Delete track button in the edit form
+  // below) so the parent can both close this detail view (the track it was showing no longer
+  // exists) and drop it from its own list — same "the child can't do this itself" reasoning as
+  // onTrackUpdated above.
+  onTrackDeleted: () => void
 }
 
 // Debounce autosave: save AUTOSAVE_DELAY_MS after the hiker stops typing, rather than requiring
@@ -204,7 +209,8 @@ function TrackDetail({
   tripTracks,
   onBack,
   onTrackUpdated,
-  onOpenTrack
+  onOpenTrack,
+  onTrackDeleted
 }: TrackDetailProps): React.JSX.Element {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -226,6 +232,7 @@ function TrackDetail({
   const [trackStartLocationInput, setTrackStartLocationInput] = useState('')
   const [trackEndLocationInput, setTrackEndLocationInput] = useState('')
   const [savingTrackInfo, setSavingTrackInfo] = useState(false)
+  const [deletingTrack, setDeletingTrack] = useState(false)
   const [trackInfoError, setTrackInfoError] = useState('')
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
@@ -498,6 +505,25 @@ function TrackDetail({
       setTrackInfoError(cleanErrorMessage(err))
     } finally {
       setSavingTrackInfo(false)
+    }
+  }
+
+  const handleDeleteTrack = async (): Promise<void> => {
+    if (
+      !window.confirm(
+        `Delete "${track.name}" and everything in it (photos, messages, journal entry)? ` +
+          `This cannot be undone.`
+      )
+    )
+      return
+    setDeletingTrack(true)
+    setTrackInfoError('')
+    try {
+      await window.api.tracks.delete(track.id)
+      onTrackDeleted()
+    } catch (err) {
+      setTrackInfoError(cleanErrorMessage(err))
+      setDeletingTrack(false)
     }
   }
 
@@ -905,15 +931,25 @@ function TrackDetail({
                 onChange={(e) => setTrackEndLocationInput(e.target.value)}
               />
               <div className="track-info-edit-controls">
-                <button type="submit" disabled={savingTrackInfo}>
-                  {savingTrackInfo ? 'Saving…' : 'Save'}
-                </button>
+                <div className="track-info-edit-controls-left">
+                  <button type="submit" disabled={savingTrackInfo || deletingTrack}>
+                    {savingTrackInfo ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelEditingTrackInfo}
+                    disabled={savingTrackInfo || deletingTrack}
+                  >
+                    Cancel
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={handleCancelEditingTrackInfo}
-                  disabled={savingTrackInfo}
+                  className="track-delete-button"
+                  onClick={handleDeleteTrack}
+                  disabled={savingTrackInfo || deletingTrack}
                 >
-                  Cancel
+                  {deletingTrack ? 'Deleting…' : 'Delete track'}
                 </button>
               </div>
               {trackInfoError && <p className="error">{trackInfoError}</p>}

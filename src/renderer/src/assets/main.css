@@ -444,11 +444,6 @@ button:hover {
   text-decoration: underline;
 }
 
-.track-actions {
-  display: flex;
-  gap: 8px;
-}
-
 .track-date {
   color: var(--ev-c-text-2);
   font-size: 13px;
@@ -546,10 +541,28 @@ button:hover {
   margin-bottom: 16px;
 }
 
+/* Save/Cancel grouped on the left, Delete pushed to the far right (bottom-right corner of the
+   edit box) via space-between — a deliberate distance from Save/Cancel so it doesn't read as
+   just another option in that group. */
 .track-info-edit-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.track-info-edit-controls-left {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.track-delete-button {
+  background-color: var(--accent-danger);
+  color: var(--ev-c-white);
+}
+
+.track-delete-button:hover {
+  filter: brightness(0.9);
 }
 
 /* A stack of label/value rows (start/end location, distance, start/end time, elevation gain)

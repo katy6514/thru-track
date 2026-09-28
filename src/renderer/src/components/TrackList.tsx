@@ -24,9 +24,6 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(false)
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null)
-  // Delete stays hidden until the hiker explicitly asks to edit the list — same pattern as
-  // TripList's own edit toggle, so a plain track row doesn't carry a Delete button all the time.
-  const [editing, setEditing] = useState(false)
   const overviewMapContainerRef = useRef<HTMLDivElement>(null)
   const overviewMapRef = useRef<L.Map | null>(null)
   // Each track's own points, fetched once per `tracks` change so every day's line can be drawn
@@ -87,7 +84,6 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
   useEffect(() => {
     refresh()
     setOpenState(null)
-    setEditing(false)
   }, [trip.id])
 
   // Fetches every listed track's own points whenever the track list changes (a fresh import, a
@@ -295,23 +291,6 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
     }
   }
 
-  const handleDelete = async (track: Track): Promise<void> => {
-    if (
-      !window.confirm(
-        `Delete "${track.name}" and everything in it (photos, messages, journal entry)? ` +
-          `This cannot be undone.`
-      )
-    )
-      return
-    setError('')
-    try {
-      await window.api.tracks.delete(track.id)
-      await refresh()
-    } catch (err) {
-      setError(cleanErrorMessage(err))
-    }
-  }
-
   // Shared by both the state accordion and the plain single-state fallback list below, so a
   // track row looks and behaves identically either way.
   const renderTrackRow = (track: Track): React.JSX.Element => (
@@ -325,13 +304,6 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
         {track.name}
       </button>
       <span className="track-date">{track.date}</span>
-      {editing && (
-        <div className="track-actions">
-          <button type="button" onClick={() => handleDelete(track)}>
-            Delete
-          </button>
-        </div>
-      )}
     </li>
   )
 
@@ -348,6 +320,10 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
         onOpenTrack={(trackId) => {
           const target = tracks.find((t) => t.id === trackId)
           if (target) setSelectedTrack(target)
+        }}
+        onTrackDeleted={() => {
+          setSelectedTrack(null)
+          refresh()
         }}
       />
     )
@@ -485,12 +461,6 @@ function TrackList({ trip, onBack }: TrackListProps): React.JSX.Element {
           </div>
 
           <div className="track-list-side-col">
-            <div className="list-edit-toggle">
-              <button type="button" onClick={() => setEditing((v) => !v)}>
-                {editing ? 'Done' : 'Edit tracks'}
-              </button>
-            </div>
-
             {stateGroups.length > 1 ? (
               <div className="track-state-accordion">
                 {stateGroups.map((group, groupIndex) => {
