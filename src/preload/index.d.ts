@@ -31,7 +31,7 @@ interface Api {
     getPoints: (trackId: number) => Promise<TrackPoint[]>
     update: (
       id: number,
-      updates: { name?: string; date?: string; startLocation?: string; endLocation?: string }
+      updates: { name?: string; startLocation?: string; endLocation?: string }
     ) => Promise<Track>
     delete: (trackId: number) => Promise<void>
   }

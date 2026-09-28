@@ -217,25 +217,16 @@ function TrackDetail({
   const preOverlayCenterRef = useRef<L.LatLng | null>(null)
   const [error, setError] = useState('')
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
-  // Renaming/re-dating (see the track-info-edit form near the header below) is only offered for
-  // an untimed track — a timed track's name/date come from its own real GPS data, not something
-  // a hiker should be able to casually overwrite. Kept separate from journalEditing below since
+  // Name and start/end location (see the track-info-edit form near the header below) are all
+  // freely editable, regardless of whether the track is timed — only the date itself is never
+  // editable (see updateTrack's own doc comment). Kept separate from journalEditing below since
   // the two are unrelated pieces of the header/page.
   const [editingTrackInfo, setEditingTrackInfo] = useState(false)
   const [trackNameInput, setTrackNameInput] = useState('')
-  const [trackDateInput, setTrackDateInput] = useState('')
+  const [trackStartLocationInput, setTrackStartLocationInput] = useState('')
+  const [trackEndLocationInput, setTrackEndLocationInput] = useState('')
   const [savingTrackInfo, setSavingTrackInfo] = useState(false)
   const [trackInfoError, setTrackInfoError] = useState('')
-  // Unlike name/date above, these are always editable (no separate edit-mode toggle) regardless
-  // of whether the track is timed — see updateTrack's own doc comment for why. A local draft
-  // rather than editing track.startLocation/endLocation directly, so keystrokes don't round-trip
-  // through the parent on every character; re-synced from the track prop when it changes, but
-  // only while not focused, so an in-progress edit is never clobbered — same pattern as a photo's
-  // caption field in PhotoGallery.tsx.
-  const [startLocationDraft, setStartLocationDraft] = useState(track.startLocation ?? '')
-  const [endLocationDraft, setEndLocationDraft] = useState(track.endLocation ?? '')
-  const [startLocationFocused, setStartLocationFocused] = useState(false)
-  const [endLocationFocused, setEndLocationFocused] = useState(false)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
   // Which timeline picker currently has its list open — at most one at a time. A number is an
@@ -480,7 +471,8 @@ function TrackDetail({
 
   const handleStartEditingTrackInfo = (): void => {
     setTrackNameInput(track.name)
-    setTrackDateInput(track.date)
+    setTrackStartLocationInput(track.startLocation ?? '')
+    setTrackEndLocationInput(track.endLocation ?? '')
     setTrackInfoError('')
     setEditingTrackInfo(true)
   }
@@ -497,7 +489,8 @@ function TrackDetail({
     try {
       const updated = await window.api.tracks.update(track.id, {
         name: trackNameInput,
-        date: trackDateInput
+        startLocation: trackStartLocationInput,
+        endLocation: trackEndLocationInput
       })
       onTrackUpdated(updated)
       setEditingTrackInfo(false)
@@ -506,28 +499,6 @@ function TrackDetail({
     } finally {
       setSavingTrackInfo(false)
     }
-  }
-
-  useEffect(() => {
-    if (!startLocationFocused) setStartLocationDraft(track.startLocation ?? '')
-  }, [track.startLocation, startLocationFocused])
-
-  useEffect(() => {
-    if (!endLocationFocused) setEndLocationDraft(track.endLocation ?? '')
-  }, [track.endLocation, endLocationFocused])
-
-  const handleStartLocationBlur = async (): Promise<void> => {
-    setStartLocationFocused(false)
-    if (startLocationDraft.trim() === (track.startLocation ?? '')) return
-    const updated = await window.api.tracks.update(track.id, { startLocation: startLocationDraft })
-    onTrackUpdated(updated)
-  }
-
-  const handleEndLocationBlur = async (): Promise<void> => {
-    setEndLocationFocused(false)
-    if (endLocationDraft.trim() === (track.endLocation ?? '')) return
-    const updated = await window.api.tracks.update(track.id, { endLocation: endLocationDraft })
-    onTrackUpdated(updated)
   }
 
   // Keeps the map's photo pins in sync with the `photos` state, independent of the initial
@@ -917,15 +888,23 @@ function TrackDetail({
                 required
                 autoFocus
               />
-              <label htmlFor="track-date-edit-input">Date</label>
+              <label htmlFor="track-start-location-input">Start location</label>
+              <input
+                id="track-start-location-input"
+                type="text"
+                className="track-info-edit-name"
+                value={trackStartLocationInput}
+                onChange={(e) => setTrackStartLocationInput(e.target.value)}
+              />
+              <label htmlFor="track-end-location-input">End location</label>
+              <input
+                id="track-end-location-input"
+                type="text"
+                className="track-info-edit-name"
+                value={trackEndLocationInput}
+                onChange={(e) => setTrackEndLocationInput(e.target.value)}
+              />
               <div className="track-info-edit-controls">
-                <input
-                  id="track-date-edit-input"
-                  type="date"
-                  value={trackDateInput}
-                  onChange={(e) => setTrackDateInput(e.target.value)}
-                  required
-                />
                 <button type="submit" disabled={savingTrackInfo}>
                   {savingTrackInfo ? 'Saving…' : 'Save'}
                 </button>
@@ -943,7 +922,7 @@ function TrackDetail({
             <>
               <div className="track-title-row">
                 <h1>{track.name}</h1>
-                {points !== null && !isTimed && (
+                {points !== null && (
                   <button
                     type="button"
                     className="track-title-edit-button"
@@ -979,31 +958,19 @@ function TrackDetail({
             </>
           )}
 
-          <div className="track-locations">
-            <input
-              type="text"
-              className="track-location-input"
-              placeholder="Start location…"
-              value={startLocationDraft}
-              onChange={(e) => setStartLocationDraft(e.target.value)}
-              onFocus={() => setStartLocationFocused(true)}
-              onBlur={handleStartLocationBlur}
-              aria-label="Start location"
-            />
-            <span className="track-locations-arrow">&rarr;</span>
-            <input
-              type="text"
-              className="track-location-input"
-              placeholder="End location…"
-              value={endLocationDraft}
-              onChange={(e) => setEndLocationDraft(e.target.value)}
-              onFocus={() => setEndLocationFocused(true)}
-              onBlur={handleEndLocationBlur}
-              aria-label="End location"
-            />
-          </div>
-
           <dl className="track-stats">
+            {track.startLocation !== null && (
+              <div className="track-stat">
+                <dt className="track-stat-label">Start location</dt>
+                <dd className="track-stat-value">{track.startLocation}</dd>
+              </div>
+            )}
+            {track.endLocation !== null && (
+              <div className="track-stat">
+                <dt className="track-stat-label">End location</dt>
+                <dd className="track-stat-value">{track.endLocation}</dd>
+              </div>
+            )}
             {trackStats && (
               <div className="track-stat">
                 <dt className="track-stat-label">Distance</dt>

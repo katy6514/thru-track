@@ -6,7 +6,6 @@ import {
   Repository,
   DateRequiredError,
   MultiDateRequiredError,
-  TrackNotTimelessError,
   inferDateFromFilename
 } from './repository'
 
@@ -350,7 +349,7 @@ describe('Repository multi-<trk> GPX import', () => {
   })
 })
 
-describe('Repository track rename/re-date', () => {
+describe('Repository track rename', () => {
   let repo: Repository
   let tripId: number
 
@@ -361,29 +360,18 @@ describe('Repository track rename/re-date', () => {
     tripId = repo.createTrip('PCT 2026').id
   })
 
-  it('renames and re-dates an untimed track', () => {
+  it('renames an untimed track', () => {
     const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
-    const updated = repo.updateTrack(track.id, { name: 'New Name', date: '2026-08-15' })
+    const updated = repo.updateTrack(track.id, { name: 'New Name' })
     expect(updated.name).toBe('New Name')
-    expect(updated.date).toBe('2026-08-15')
+    expect(updated.date).toBe('2026-07-01')
     expect(updated.id).toBe(track.id)
   })
 
-  it('updates only the field given, leaving the other unchanged', () => {
-    const track = importOneTrack(repo, tripId, timelessGpx('Original'), { date: '2026-07-01' })
-    const renamedOnly = repo.updateTrack(track.id, { name: 'Renamed' })
-    expect(renamedOnly.name).toBe('Renamed')
-    expect(renamedOnly.date).toBe('2026-07-01')
-
-    const redatedOnly = repo.updateTrack(track.id, { date: '2026-09-01' })
-    expect(redatedOnly.name).toBe('Renamed')
-    expect(redatedOnly.date).toBe('2026-09-01')
-  })
-
-  it('rejects renaming or re-dating a timed (live-recorded) track', () => {
+  it('renames a timed (live-recorded) track too', () => {
     const track = importOneTrack(repo, tripId, sampleGpx())
-    expect(() => repo.updateTrack(track.id, { name: 'New Name' })).toThrow(TrackNotTimelessError)
-    expect(() => repo.updateTrack(track.id, { date: '2026-08-15' })).toThrow(TrackNotTimelessError)
+    const updated = repo.updateTrack(track.id, { name: 'New Name' })
+    expect(updated.name).toBe('New Name')
   })
 
   it('rejects an empty name', () => {
@@ -391,13 +379,57 @@ describe('Repository track rename/re-date', () => {
     expect(() => repo.updateTrack(track.id, { name: '   ' })).toThrow()
   })
 
-  it('rejects a malformed date', () => {
-    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
-    expect(() => repo.updateTrack(track.id, { date: 'not-a-date' })).toThrow()
-  })
-
   it('throws when the track does not exist', () => {
     expect(() => repo.updateTrack(999, { name: 'New Name' })).toThrow()
+  })
+})
+
+describe('Repository track start/end location', () => {
+  let repo: Repository
+  let tripId: number
+
+  beforeEach(() => {
+    const db = new Database(':memory:')
+    migrate(db)
+    repo = new Repository(db)
+    tripId = repo.createTrip('PCT 2026').id
+  })
+
+  it('sets start and end location on a track', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
+    const updated = repo.updateTrack(track.id, {
+      startLocation: 'Canadian Border',
+      endLocation: 'Lake Elizabeth'
+    })
+    expect(updated.startLocation).toBe('Canadian Border')
+    expect(updated.endLocation).toBe('Lake Elizabeth')
+  })
+
+  it('allows editing on a timed track', () => {
+    const track = importOneTrack(repo, tripId, sampleGpx())
+    const updated = repo.updateTrack(track.id, { startLocation: 'Trailhead' })
+    expect(updated.startLocation).toBe('Trailhead')
+  })
+
+  it('trims whitespace', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
+    const updated = repo.updateTrack(track.id, { startLocation: '  Trailhead  ' })
+    expect(updated.startLocation).toBe('Trailhead')
+  })
+
+  it('clears a location back to null on blank input', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
+    repo.updateTrack(track.id, { startLocation: 'Trailhead' })
+    const cleared = repo.updateTrack(track.id, { startLocation: '   ' })
+    expect(cleared.startLocation).toBeNull()
+  })
+
+  it('leaves a location unchanged when not included in the update', () => {
+    const track = importOneTrack(repo, tripId, timelessGpx(), { date: '2026-07-01' })
+    repo.updateTrack(track.id, { startLocation: 'Trailhead', endLocation: 'Camp' })
+    const renamedOnly = repo.updateTrack(track.id, { name: 'Renamed' })
+    expect(renamedOnly.startLocation).toBe('Trailhead')
+    expect(renamedOnly.endLocation).toBe('Camp')
   })
 })
 

@@ -63,7 +63,7 @@ export function registerIpcHandlers(): void {
     (
       _event,
       id: number,
-      updates: { name?: string; date?: string; startLocation?: string; endLocation?: string }
+      updates: { name?: string; startLocation?: string; endLocation?: string }
     ): Track => repository.updateTrack(id, updates)
   )
 

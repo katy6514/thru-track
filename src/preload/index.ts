@@ -38,7 +38,7 @@ const api = {
       ipcRenderer.invoke('tracks:getPoints', trackId),
     update: (
       id: number,
-      updates: { name?: string; date?: string; startLocation?: string; endLocation?: string }
+      updates: { name?: string; startLocation?: string; endLocation?: string }
     ): Promise<Track> => ipcRenderer.invoke('tracks:update', id, updates),
     delete: (trackId: number): Promise<void> => ipcRenderer.invoke('tracks:delete', trackId)
   },

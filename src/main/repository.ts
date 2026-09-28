@@ -47,12 +47,6 @@ export class MultiDateRequiredError extends Error {
   }
 }
 
-// Thrown when trying to rename or re-date a track that has real GPS timestamps — a live-recorded
-// track's name/date come from its own data, not a hiker's typed-in guess, so editing them isn't
-// offered at all for a timed track. Only an untimed track (a CalTopo-style retrace or a planning
-// route with no GPS clock) can have these edited.
-export class TrackNotTimelessError extends Error {}
-
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 function isPlausibleDate(year: number, month: number, day: number): boolean {
@@ -381,39 +375,18 @@ export class Repository {
     return rows.map(toTrack)
   }
 
-  // Renaming/re-dating is only offered for an untimed track (see TrackNotTimelessError) — a timed
-  // track's name/date already come from real GPS data, and letting a hiker overwrite that with a
-  // typed-in guess would contradict the app's "no guessing" stance on everything else timeline/
-  // position related. start/end location have no equivalent real-data source to contradict — the
-  // app never infers them from anything — so they're editable regardless of whether the track is
-  // timed.
+  // name/startLocation/endLocation are all freely editable regardless of whether the track is
+  // timed — none of them are inferred from the track's own GPS data (unlike date, which is never
+  // editable at all: it's either the track's own recorded GPS date, or — for an untimed track —
+  // set once at import time).
   updateTrack(
     id: number,
-    updates: { name?: string; date?: string; startLocation?: string; endLocation?: string }
+    updates: { name?: string; startLocation?: string; endLocation?: string }
   ): Track {
     const row = this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(id) as TrackRow | undefined
     if (!row) throw new Error(`Track ${id} not found`)
 
-    if (updates.name !== undefined || updates.date !== undefined) {
-      const firstPoint = this.db
-        .prepare('SELECT timestamp FROM track_points WHERE track_id = ? LIMIT 1')
-        .get(id) as { timestamp: string | null } | undefined
-      const isTimed = firstPoint !== undefined && firstPoint.timestamp !== null
-      if (isTimed) {
-        throw new TrackNotTimelessError(
-          'Only an untimed track (no GPS timestamps) can have its name or date edited'
-        )
-      }
-    }
-
     const name = updates.name !== undefined ? requireName(updates.name, 'Track') : row.name
-    let date = row.date
-    if (updates.date !== undefined) {
-      if (!ISO_DATE.test(updates.date)) {
-        throw new Error('Date must be in YYYY-MM-DD format')
-      }
-      date = updates.date
-    }
     // Blank (or whitespace-only) input clears the field back to null rather than storing an
     // empty string, same convention as a photo's caption — the two read identically in the UI.
     const startLocation =
@@ -424,10 +397,8 @@ export class Repository {
       updates.endLocation !== undefined ? updates.endLocation.trim() || null : row.end_location
 
     this.db
-      .prepare(
-        'UPDATE tracks SET name = ?, date = ?, start_location = ?, end_location = ? WHERE id = ?'
-      )
-      .run(name, date, startLocation, endLocation, id)
+      .prepare('UPDATE tracks SET name = ?, start_location = ?, end_location = ? WHERE id = ?')
+      .run(name, startLocation, endLocation, id)
     return toTrack(this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(id) as TrackRow)
   }
 
