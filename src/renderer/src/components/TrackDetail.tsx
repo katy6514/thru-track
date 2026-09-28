@@ -199,6 +199,111 @@ function formatOffset(minutes: number): string {
   return `${sign}${hours}h ${mins}m`
 }
 
+// A small pencil glyph (Material Design's own Edit icon path) marking an inline-editable field —
+// drawn as inline SVG rather than pulling in an icon library for the one shape this app needs.
+function EditIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+    </svg>
+  )
+}
+
+interface EditableFieldProps {
+  // '' means "not set yet" — never null, so the field always has something well-defined to
+  // compare a fresh draft against and to restore on Escape.
+  value: string
+  // Shown in place of an empty value, and used to build the edit button's own aria-label.
+  placeholder: string
+  onSave: (value: string) => Promise<void>
+  // Only true for the track name — an empty title makes no sense, so blurring an emptied-out
+  // draft reverts instead of saving, the same way a track can never be renamed to nothing via the
+  // old form's `required` input.
+  required?: boolean
+  inputClassName?: string
+}
+
+// A value that reads as plain text with a small pencil button beside it, and becomes a text
+// input in place the moment that pencil is clicked — used for the track title and its start/end
+// location, each independently. Saves on blur (or Enter, which just blurs) — same "type freely,
+// save when you leave the field" shape as a photo's caption in PhotoGallery.tsx — and Escape
+// reverts without saving, since unlike a caption these sit right next to their own dedicated
+// trigger rather than being always in an editable state.
+function EditableField({
+  value,
+  placeholder,
+  onSave,
+  required,
+  inputClassName
+}: EditableFieldProps): React.JSX.Element {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const startEditing = (): void => {
+    setDraft(value)
+    setEditing(true)
+  }
+
+  const commit = async (): Promise<void> => {
+    const trimmed = draft.trim()
+    setEditing(false)
+    if (required && trimmed === '') return
+    if (trimmed === value) return
+    setSaving(true)
+    try {
+      await onSave(draft)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Escape') {
+      setDraft(value)
+      setEditing(false)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      e.currentTarget.blur()
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        className={inputClassName}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+        aria-label={placeholder}
+      />
+    )
+  }
+
+  return (
+    <>
+      {value || <span className="editable-field-placeholder">{placeholder}</span>}
+      <button
+        type="button"
+        className="editable-field-edit-button"
+        onClick={startEditing}
+        disabled={saving}
+        aria-label={`Edit ${placeholder.toLowerCase()}`}
+      >
+        <EditIcon />
+      </button>
+    </>
+  )
+}
+
 // Which side-panel item (if any) is currently open. A photo and a message can never be open at
 // the same time — this is a single discriminated slot rather than two independent "selected id"
 // states, so selecting one always closes the other.
@@ -223,17 +328,11 @@ function TrackDetail({
   const preOverlayCenterRef = useRef<L.LatLng | null>(null)
   const [error, setError] = useState('')
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
-  // Name and start/end location (see the track-info-edit form near the header below) are all
-  // freely editable, regardless of whether the track is timed — only the date itself is never
-  // editable (see updateTrack's own doc comment). Kept separate from journalEditing below since
-  // the two are unrelated pieces of the header/page.
-  const [editingTrackInfo, setEditingTrackInfo] = useState(false)
-  const [trackNameInput, setTrackNameInput] = useState('')
-  const [trackStartLocationInput, setTrackStartLocationInput] = useState('')
-  const [trackEndLocationInput, setTrackEndLocationInput] = useState('')
-  const [savingTrackInfo, setSavingTrackInfo] = useState(false)
+  // Name and start/end location are each independently inline-editable (see EditableField below)
+  // regardless of whether the track is timed — only the date itself is never editable (see
+  // updateTrack's own doc comment).
   const [deletingTrack, setDeletingTrack] = useState(false)
-  const [trackInfoError, setTrackInfoError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
   // Which timeline picker currently has its list open — at most one at a time. A number is an
@@ -337,8 +436,7 @@ function TrackDetail({
     let cancelled = false
     setError('')
     setPoints(null)
-    setEditingTrackInfo(false)
-    setTrackInfoError('')
+    setDeleteError('')
     setScrubMs(null)
     setScrubStatus('ok')
     setOpenTimelinePicker(null)
@@ -476,36 +574,19 @@ function TrackDetail({
       ? tripTracks[tripTrackIndex + 1]
       : null
 
-  const handleStartEditingTrackInfo = (): void => {
-    setTrackNameInput(track.name)
-    setTrackStartLocationInput(track.startLocation ?? '')
-    setTrackEndLocationInput(track.endLocation ?? '')
-    setTrackInfoError('')
-    setEditingTrackInfo(true)
+  const handleSaveName = async (name: string): Promise<void> => {
+    const updated = await window.api.tracks.update(track.id, { name })
+    onTrackUpdated(updated)
   }
 
-  const handleCancelEditingTrackInfo = (): void => {
-    setEditingTrackInfo(false)
-    setTrackInfoError('')
+  const handleSaveStartLocation = async (startLocation: string): Promise<void> => {
+    const updated = await window.api.tracks.update(track.id, { startLocation })
+    onTrackUpdated(updated)
   }
 
-  const handleSaveTrackInfo = async (e: FormEvent): Promise<void> => {
-    e.preventDefault()
-    setSavingTrackInfo(true)
-    setTrackInfoError('')
-    try {
-      const updated = await window.api.tracks.update(track.id, {
-        name: trackNameInput,
-        startLocation: trackStartLocationInput,
-        endLocation: trackEndLocationInput
-      })
-      onTrackUpdated(updated)
-      setEditingTrackInfo(false)
-    } catch (err) {
-      setTrackInfoError(cleanErrorMessage(err))
-    } finally {
-      setSavingTrackInfo(false)
-    }
+  const handleSaveEndLocation = async (endLocation: string): Promise<void> => {
+    const updated = await window.api.tracks.update(track.id, { endLocation })
+    onTrackUpdated(updated)
   }
 
   const handleDeleteTrack = async (): Promise<void> => {
@@ -517,12 +598,12 @@ function TrackDetail({
     )
       return
     setDeletingTrack(true)
-    setTrackInfoError('')
+    setDeleteError('')
     try {
       await window.api.tracks.delete(track.id)
       onTrackDeleted()
     } catch (err) {
-      setTrackInfoError(cleanErrorMessage(err))
+      setDeleteError(cleanErrorMessage(err))
       setDeletingTrack(false)
     }
   }
@@ -899,114 +980,132 @@ function TrackDetail({
           <button type="button" className="back-link" onClick={onBack}>
             &larr; Back to tracks
           </button>
+          <div className="track-detail-header-actions">
+            <div className="dropdown-menu" ref={addDataMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowAddDataMenu((v) => !v)}
+                disabled={
+                  importingPhotos ||
+                  !!pendingOffsetImport ||
+                  importingMessages ||
+                  startingPhoneUpload
+                }
+              >
+                {importingPhotos
+                  ? 'Importing photos…'
+                  : importingMessages
+                    ? 'Importing…'
+                    : startingPhoneUpload
+                      ? 'Starting…'
+                      : 'Add data ▾'}
+              </button>
+              {showAddDataMenu && (
+                <div className="dropdown-menu-options dropdown-menu-options-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      journalPreviewRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                      })
+                      handleStartEditingJournal()
+                    }}
+                  >
+                    Jump to journal entry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      handleImportPhotos()
+                    }}
+                  >
+                    Import photos…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      handleImportMessages()
+                    }}
+                  >
+                    Import messages (CSV)…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddDataMenu(false)
+                      handleStartPhoneUpload()
+                    }}
+                    disabled={!!phoneUploadSession}
+                  >
+                    Upload photos from phone…
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="track-header-info">
-          {editingTrackInfo ? (
-            <form className="track-info-edit" onSubmit={handleSaveTrackInfo}>
-              <label htmlFor="track-name-input">Name</label>
-              <input
-                id="track-name-input"
-                type="text"
-                className="track-info-edit-name"
-                value={trackNameInput}
-                onChange={(e) => setTrackNameInput(e.target.value)}
-                required
-                autoFocus
-              />
-              <label htmlFor="track-start-location-input">Start location</label>
-              <input
-                id="track-start-location-input"
-                type="text"
-                className="track-info-edit-name"
-                value={trackStartLocationInput}
-                onChange={(e) => setTrackStartLocationInput(e.target.value)}
-              />
-              <label htmlFor="track-end-location-input">End location</label>
-              <input
-                id="track-end-location-input"
-                type="text"
-                className="track-info-edit-name"
-                value={trackEndLocationInput}
-                onChange={(e) => setTrackEndLocationInput(e.target.value)}
-              />
-              <div className="track-info-edit-controls">
-                <div className="track-info-edit-controls-left">
-                  <button type="submit" disabled={savingTrackInfo || deletingTrack}>
-                    {savingTrackInfo ? 'Saving…' : 'Save'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancelEditingTrackInfo}
-                    disabled={savingTrackInfo || deletingTrack}
-                  >
-                    Cancel
-                  </button>
-                </div>
+          <h1 className="track-title">
+            <EditableField
+              value={track.name}
+              placeholder="Track name"
+              onSave={handleSaveName}
+              required
+              inputClassName="track-title-input"
+            />
+          </h1>
+          <p className="track-date">{formatTrackDate(track.date)}</p>
+          {(previousTrack || nextTrack) && (
+            <div className="track-day-nav">
+              {previousTrack && (
                 <button
                   type="button"
-                  className="track-delete-button"
-                  onClick={handleDeleteTrack}
-                  disabled={savingTrackInfo || deletingTrack}
+                  className="track-day-nav-button"
+                  onClick={() => onOpenTrack(previousTrack.id)}
                 >
-                  {deletingTrack ? 'Deleting…' : 'Delete track'}
+                  &larr; {formatTrackDate(previousTrack.date)}
                 </button>
-              </div>
-              {trackInfoError && <p className="error">{trackInfoError}</p>}
-            </form>
-          ) : (
-            <>
-              <div className="track-title-row">
-                <h1>{track.name}</h1>
-                {points !== null && (
-                  <button
-                    type="button"
-                    className="track-title-edit-button"
-                    onClick={handleStartEditingTrackInfo}
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-              <p className="track-date">{formatTrackDate(track.date)}</p>
-              {(previousTrack || nextTrack) && (
-                <div className="track-day-nav">
-                  {previousTrack && (
-                    <button
-                      type="button"
-                      className="track-day-nav-button"
-                      onClick={() => onOpenTrack(previousTrack.id)}
-                    >
-                      &larr; {formatTrackDate(previousTrack.date)}
-                    </button>
-                  )}
-                  {nextTrack && (
-                    <button
-                      type="button"
-                      className="track-day-nav-button track-day-nav-button-next"
-                      onClick={() => onOpenTrack(nextTrack.id)}
-                    >
-                      {formatTrackDate(nextTrack.date)} &rarr;
-                    </button>
-                  )}
-                </div>
               )}
-            </>
+              {nextTrack && (
+                <button
+                  type="button"
+                  className="track-day-nav-button track-day-nav-button-next"
+                  onClick={() => onOpenTrack(nextTrack.id)}
+                >
+                  {formatTrackDate(nextTrack.date)} &rarr;
+                </button>
+              )}
+            </div>
           )}
 
           <dl className="track-stats">
-            {track.startLocation !== null && (
-              <div className="track-stat">
-                <dt className="track-stat-label">Start location</dt>
-                <dd className="track-stat-value">{track.startLocation}</dd>
-              </div>
-            )}
-            {track.endLocation !== null && (
-              <div className="track-stat">
-                <dt className="track-stat-label">End location</dt>
-                <dd className="track-stat-value">{track.endLocation}</dd>
-              </div>
-            )}
+            <div className="track-stat">
+              <dt className="track-stat-label">Start location</dt>
+              <dd className="track-stat-value">
+                <EditableField
+                  value={track.startLocation ?? ''}
+                  placeholder="Add start location"
+                  onSave={handleSaveStartLocation}
+                  inputClassName="track-stat-value-input"
+                />
+              </dd>
+            </div>
+            <div className="track-stat">
+              <dt className="track-stat-label">End location</dt>
+              <dd className="track-stat-value">
+                <EditableField
+                  value={track.endLocation ?? ''}
+                  placeholder="Add end location"
+                  onSave={handleSaveEndLocation}
+                  inputClassName="track-stat-value-input"
+                />
+              </dd>
+            </div>
             {trackStats && (
               <div className="track-stat">
                 <dt className="track-stat-label">Distance</dt>
@@ -1034,69 +1133,6 @@ function TrackDetail({
               </div>
             )}
           </dl>
-
-          <div className="dropdown-menu" ref={addDataMenuRef}>
-            <button
-              type="button"
-              onClick={() => setShowAddDataMenu((v) => !v)}
-              disabled={
-                importingPhotos || !!pendingOffsetImport || importingMessages || startingPhoneUpload
-              }
-            >
-              {importingPhotos
-                ? 'Importing photos…'
-                : importingMessages
-                  ? 'Importing…'
-                  : startingPhoneUpload
-                    ? 'Starting…'
-                    : 'Add data ▾'}
-            </button>
-            {showAddDataMenu && (
-              <div className="dropdown-menu-options">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    journalPreviewRef.current?.scrollIntoView({
-                      behavior: 'smooth',
-                      block: 'center'
-                    })
-                    handleStartEditingJournal()
-                  }}
-                >
-                  Jump to journal entry
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    handleImportPhotos()
-                  }}
-                >
-                  Import photos…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    handleImportMessages()
-                  }}
-                >
-                  Import messages (CSV)…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddDataMenu(false)
-                    handleStartPhoneUpload()
-                  }}
-                  disabled={!!phoneUploadSession}
-                >
-                  Upload photos from phone…
-                </button>
-              </div>
-            )}
-          </div>
         </div>
 
         {phoneUploadSession && (
@@ -1401,6 +1437,18 @@ function TrackDetail({
             ))}
           </ul>
         )}
+
+        <div className="track-delete-row">
+          <button
+            type="button"
+            className="track-delete-button"
+            onClick={handleDeleteTrack}
+            disabled={deletingTrack}
+          >
+            {deletingTrack ? 'Deleting…' : 'Delete track'}
+          </button>
+          {deleteError && <p className="error">{deleteError}</p>}
+        </div>
       </div>
 
       {/* A zero-point track has no map for the usual photo-map-overlay to cover, so an expanded
