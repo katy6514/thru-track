@@ -60,8 +60,11 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     'tracks:update',
-    (_event, id: number, updates: { name?: string; date?: string }): Track =>
-      repository.updateTrack(id, updates)
+    (
+      _event,
+      id: number,
+      updates: { name?: string; date?: string; startLocation?: string; endLocation?: string }
+    ): Track => repository.updateTrack(id, updates)
   )
 
   ipcMain.handle('tracks:delete', async (_event, id: number): Promise<void> => {

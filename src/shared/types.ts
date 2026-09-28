@@ -10,6 +10,11 @@ export interface Track {
   tripId: number
   name: string
   date: string
+  // Hiker-authored, free text, independent of whether the track is timed — e.g. "Canadian Border"
+  // / "Lake Elizabeth" for a point-to-point day. Both null until added; neither is inferred from
+  // GPS data the way name/date can be for an untimed track.
+  startLocation: string | null
+  endLocation: string | null
   createdAt: string
 }
 

@@ -553,6 +553,37 @@ button:hover {
   align-items: center;
 }
 
+/* Always editable (no separate edit-mode toggle, unlike .track-info-edit above) — start/end
+   location have no real-data source to contradict, so there's nothing to protect them from. */
+.track-locations {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.track-location-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text);
+}
+
+.track-location-input:hover,
+.track-location-input:focus {
+  background-color: var(--color-background-soft);
+  border-color: var(--ev-c-gray-2);
+}
+
+.track-locations-arrow {
+  color: var(--ev-c-text-2);
+  flex-shrink: 0;
+}
+
 /* A stack of label/value rows (date, distance, start/end time, elevation gain) rather than a
    literal HTML table — several of these are conditionally omitted (start/end on a timeless
    track, elevation gain when the track has no elevation data at all), which a <dl> handles far

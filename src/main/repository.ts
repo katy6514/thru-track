@@ -17,6 +17,8 @@ interface TrackRow {
   name: string
   date: string
   gpx_raw: string
+  start_location: string | null
+  end_location: string | null
   created_at: string
 }
 
@@ -147,6 +149,8 @@ function toTrack(row: TrackRow): Track {
     tripId: row.trip_id,
     name: row.name,
     date: row.date,
+    startLocation: row.start_location,
+    endLocation: row.end_location,
     createdAt: row.created_at
   }
 }
@@ -380,8 +384,13 @@ export class Repository {
   // Renaming/re-dating is only offered for an untimed track (see TrackNotTimelessError) — a timed
   // track's name/date already come from real GPS data, and letting a hiker overwrite that with a
   // typed-in guess would contradict the app's "no guessing" stance on everything else timeline/
-  // position related.
-  updateTrack(id: number, updates: { name?: string; date?: string }): Track {
+  // position related. start/end location have no equivalent real-data source to contradict — the
+  // app never infers them from anything — so they're editable regardless of whether the track is
+  // timed.
+  updateTrack(
+    id: number,
+    updates: { name?: string; date?: string; startLocation?: string; endLocation?: string }
+  ): Track {
     const row = this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(id) as TrackRow | undefined
     if (!row) throw new Error(`Track ${id} not found`)
 
@@ -405,8 +414,20 @@ export class Repository {
       }
       date = updates.date
     }
+    // Blank (or whitespace-only) input clears the field back to null rather than storing an
+    // empty string, same convention as a photo's caption — the two read identically in the UI.
+    const startLocation =
+      updates.startLocation !== undefined
+        ? updates.startLocation.trim() || null
+        : row.start_location
+    const endLocation =
+      updates.endLocation !== undefined ? updates.endLocation.trim() || null : row.end_location
 
-    this.db.prepare('UPDATE tracks SET name = ?, date = ? WHERE id = ?').run(name, date, id)
+    this.db
+      .prepare(
+        'UPDATE tracks SET name = ?, date = ?, start_location = ?, end_location = ? WHERE id = ?'
+      )
+      .run(name, date, startLocation, endLocation, id)
     return toTrack(this.db.prepare('SELECT * FROM tracks WHERE id = ?').get(id) as TrackRow)
   }
 

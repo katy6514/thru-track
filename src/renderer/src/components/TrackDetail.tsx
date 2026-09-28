@@ -226,6 +226,16 @@ function TrackDetail({
   const [trackDateInput, setTrackDateInput] = useState('')
   const [savingTrackInfo, setSavingTrackInfo] = useState(false)
   const [trackInfoError, setTrackInfoError] = useState('')
+  // Unlike name/date above, these are always editable (no separate edit-mode toggle) regardless
+  // of whether the track is timed — see updateTrack's own doc comment for why. A local draft
+  // rather than editing track.startLocation/endLocation directly, so keystrokes don't round-trip
+  // through the parent on every character; re-synced from the track prop when it changes, but
+  // only while not focused, so an in-progress edit is never clobbered — same pattern as a photo's
+  // caption field in PhotoGallery.tsx.
+  const [startLocationDraft, setStartLocationDraft] = useState(track.startLocation ?? '')
+  const [endLocationDraft, setEndLocationDraft] = useState(track.endLocation ?? '')
+  const [startLocationFocused, setStartLocationFocused] = useState(false)
+  const [endLocationFocused, setEndLocationFocused] = useState(false)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [scrubStatus, setScrubStatus] = useState<'ok' | 'gap' | 'out-of-range'>('ok')
   // Which timeline picker currently has its list open — at most one at a time. A number is an
@@ -496,6 +506,28 @@ function TrackDetail({
     } finally {
       setSavingTrackInfo(false)
     }
+  }
+
+  useEffect(() => {
+    if (!startLocationFocused) setStartLocationDraft(track.startLocation ?? '')
+  }, [track.startLocation, startLocationFocused])
+
+  useEffect(() => {
+    if (!endLocationFocused) setEndLocationDraft(track.endLocation ?? '')
+  }, [track.endLocation, endLocationFocused])
+
+  const handleStartLocationBlur = async (): Promise<void> => {
+    setStartLocationFocused(false)
+    if (startLocationDraft.trim() === (track.startLocation ?? '')) return
+    const updated = await window.api.tracks.update(track.id, { startLocation: startLocationDraft })
+    onTrackUpdated(updated)
+  }
+
+  const handleEndLocationBlur = async (): Promise<void> => {
+    setEndLocationFocused(false)
+    if (endLocationDraft.trim() === (track.endLocation ?? '')) return
+    const updated = await window.api.tracks.update(track.id, { endLocation: endLocationDraft })
+    onTrackUpdated(updated)
   }
 
   // Keeps the map's photo pins in sync with the `photos` state, independent of the initial
@@ -946,6 +978,30 @@ function TrackDetail({
               )}
             </>
           )}
+
+          <div className="track-locations">
+            <input
+              type="text"
+              className="track-location-input"
+              placeholder="Start location…"
+              value={startLocationDraft}
+              onChange={(e) => setStartLocationDraft(e.target.value)}
+              onFocus={() => setStartLocationFocused(true)}
+              onBlur={handleStartLocationBlur}
+              aria-label="Start location"
+            />
+            <span className="track-locations-arrow">&rarr;</span>
+            <input
+              type="text"
+              className="track-location-input"
+              placeholder="End location…"
+              value={endLocationDraft}
+              onChange={(e) => setEndLocationDraft(e.target.value)}
+              onFocus={() => setEndLocationFocused(true)}
+              onBlur={handleEndLocationBlur}
+              aria-label="End location"
+            />
+          </div>
 
           <dl className="track-stats">
             {trackStats && (

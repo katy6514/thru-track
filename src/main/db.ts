@@ -20,6 +20,8 @@ export function migrate(database: Database.Database): void {
       name TEXT NOT NULL,
       date TEXT NOT NULL,
       gpx_raw TEXT NOT NULL,
+      start_location TEXT,
+      end_location TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -92,6 +94,7 @@ export function migrate(database: Database.Database): void {
   migrateTrackPointsTimestampNullable(database)
   migratePhotosContentHash(database)
   migratePhotosCaption(database)
+  migrateTracksLocations(database)
   dropJournalNotes(database)
 }
 
@@ -133,6 +136,19 @@ function migratePhotosCaption(database: Database.Database): void {
   if (columns.some((c) => c.name === 'caption')) return
 
   database.exec('ALTER TABLE photos ADD COLUMN caption TEXT')
+}
+
+// tracks.start_location/end_location were added after tracks already existed in the wild —
+// same plain nullable ADD COLUMN as photos.caption above. Existing rows get NULL, the same "not
+// filled in yet" state a freshly-created track starts in — no backfill needed.
+function migrateTracksLocations(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(tracks)').all() as { name: string }[]
+  if (columns.some((c) => c.name === 'start_location')) return
+
+  database.exec(`
+    ALTER TABLE tracks ADD COLUMN start_location TEXT;
+    ALTER TABLE tracks ADD COLUMN end_location TEXT;
+  `)
 }
 
 // track_points.timestamp used to be NOT NULL, before timeless (CalTopo-retrace-style) tracks

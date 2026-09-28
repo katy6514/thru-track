@@ -7,7 +7,15 @@ import {
 } from './groupTracksByState'
 
 function track(id: number, date: string): Track {
-  return { id, tripId: 1, name: `Track ${id}`, date, createdAt: date }
+  return {
+    id,
+    tripId: 1,
+    name: `Track ${id}`,
+    date,
+    startLocation: null,
+    endLocation: null,
+    createdAt: date
+  }
 }
 
 function classification(
