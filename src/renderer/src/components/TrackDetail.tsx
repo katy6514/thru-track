@@ -50,6 +50,16 @@ const photoIcon = L.divIcon({
   iconAnchor: [8, 8]
 })
 
+// A square divIcon rather than Leaflet's built-in L.circleMarker (which can only ever render a
+// circle) — a message's map pin needs to be a square to match its own timeline marker's shape,
+// same "same kind of thing reads the same way in both places" reasoning as the photo pin above.
+const messageIcon = L.divIcon({
+  className: 'message-map-marker',
+  html: '<div class="message-map-marker-dot"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+})
+
 interface TrackDetailProps {
   track: Track
   // Every track in this track's trip, in the same date-sorted order the parent already fetches
@@ -538,13 +548,7 @@ function TrackDetail({
     if (!layer) return
     layer.clearLayers()
     for (const message of messages) {
-      L.circleMarker([message.lat, message.lng], {
-        radius: 7,
-        weight: 2,
-        color: '#0d9488',
-        fillColor: '#2dd4bf',
-        fillOpacity: 0.9
-      })
+      L.marker([message.lat, message.lng], { icon: messageIcon })
         .bindTooltip(message.content || '(no message text)')
         .on('click', () => setSelectedItem({ kind: 'message', id: message.id }))
         .addTo(layer)

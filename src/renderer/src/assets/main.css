@@ -886,10 +886,9 @@ button:hover {
   cursor: pointer;
 }
 
-/* Square rather than round, so a photo reads differently from a message at a glance on the
-   timeline strip. */
+/* Round, inheriting .timeline-marker's own base shape unchanged — just the color that marks
+   this as a photo. */
 .timeline-marker-photo {
-  border-radius: 3px;
   background-color: var(--accent-photo);
 }
 
@@ -897,15 +896,10 @@ button:hover {
   background-color: var(--accent-photo-hover);
 }
 
-/* A message dot is shaped differently (diamond vs. circle) and colored teal to match its map
-   marker, so the two item types stay visually distinguishable when both appear on the same
-   timeline. */
+/* Square rather than round, so a message reads differently from a photo at a glance on the
+   timeline strip — colored to match its own map marker. */
 .timeline-marker-message {
-  top: 3px;
-  width: 9px;
-  height: 9px;
   border-radius: 2px;
-  transform: translateX(-50%) rotate(45deg);
   background-color: var(--accent-message);
 }
 
@@ -1016,15 +1010,26 @@ button:hover {
   color: var(--accent-danger);
 }
 
-/* Same green used for .timeline-marker-photo, so a photo's map pin and its timeline marker read
-   as the same kind of thing. Built as a plain CSS dot (a Leaflet divIcon) rather than another
-   marker image asset, to avoid the bundler-rewritten-asset-path pitfall noted above. */
+/* Same green (and round shape) as .timeline-marker-photo, so a photo's map pin and its timeline
+   marker read as the same kind of thing. Built as a plain CSS dot (a Leaflet divIcon) rather than
+   another marker image asset, to avoid the bundler-rewritten-asset-path pitfall noted above. */
 .photo-map-marker-dot {
   width: 14px;
   height: 14px;
-  border-radius: 3px;
+  border-radius: 50%;
   border: 2px solid var(--color-background);
-  background-color: #4ade80;
+  background-color: var(--accent-photo);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+/* Same yellow (and square shape) as .timeline-marker-message, so a message's map pin and its
+   timeline marker read as the same kind of thing — see .photo-map-marker-dot above. */
+.message-map-marker-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  border: 2px solid var(--color-background);
+  background-color: var(--accent-message);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 
@@ -1206,15 +1211,11 @@ button:hover {
 }
 
 .how-to-swatch-photo {
-  border-radius: 3px;
   background-color: var(--accent-photo);
 }
 
 .how-to-swatch-message {
-  width: 8px;
-  height: 8px;
   border-radius: 2px;
-  transform: rotate(45deg);
   background-color: var(--accent-message);
 }
 

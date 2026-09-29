@@ -344,7 +344,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
           Placed photos show as a{' '}
           <span className="how-to-chip">
             <span className="how-to-swatch how-to-swatch-photo" />
-            green square
+            green circle
           </span>{' '}
           on the timeline and a green pin on the map. Click either to open the actual image — it
           appears over the right half of the map (not beside it, like a message), and the map pans
@@ -389,12 +389,12 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
           Messages appear as a{' '}
           <span className="how-to-chip">
             <span className="how-to-swatch how-to-swatch-message" />
-            teal diamond
+            yellow square
           </span>{' '}
-          on the timeline and a teal circle on the map. Click one to read its text, exact time, and
-          coordinates — it opens in a panel <em>beside</em> the map, not over it, so the map stays
-          fully visible the whole time you&rsquo;re reading. A photo works a little differently; see{' '}
-          <a href="#photos">&sect;05</a>.
+          on the timeline and a matching square pin on the map. Click one to read its text, exact
+          time, and coordinates — it opens in a panel <em>beside</em> the map, not over it, so the
+          map stays fully visible the whole time you&rsquo;re reading. A photo works a little
+          differently; see <a href="#photos">&sect;05</a>.
         </p>
         <div className="how-to-callout how-to-callout-message">
           <span className="how-to-callout-label">If the file doesn&rsquo;t match</span>
@@ -476,7 +476,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
                 <td>
                   <span className="how-to-chip">
                     <span className="how-to-swatch how-to-swatch-photo" />
-                    Green square
+                    Green circle
                   </span>
                 </td>
                 <td>Optional</td>
@@ -487,7 +487,7 @@ function HowTo({ onBack }: HowToProps): React.JSX.Element {
                 <td>
                   <span className="how-to-chip">
                     <span className="how-to-swatch how-to-swatch-message" />
-                    Teal diamond
+                    Yellow square
                   </span>
                 </td>
                 <td>No &mdash; always has its own GPS/time</td>
