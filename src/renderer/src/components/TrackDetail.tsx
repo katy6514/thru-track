@@ -209,22 +209,14 @@ function formatOffset(minutes: number): string {
   return `${sign}${hours}h ${mins}m`
 }
 
-// A small pencil glyph (Material Design's own Edit icon path) marking an inline-editable field —
-// drawn as inline SVG rather than pulling in an icon library for the one shape this app needs.
-function EditIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-    </svg>
-  )
-}
-
 interface EditableFieldProps {
   // '' means "not set yet" — never null, so the field always has something well-defined to
   // compare a fresh draft against and to restore on Escape.
   value: string
-  // Shown in place of an empty value, and used to build the edit button's own aria-label.
   placeholder: string
+  // Driven by the shared Edit/Done button in the header, not a trigger this field owns itself —
+  // every EditableField on the page turns into an input at once, and back, together.
+  editing: boolean
   onSave: (value: string) => Promise<void>
   // Only true for the track name — an empty title makes no sense, so blurring an emptied-out
   // draft reverts instead of saving, the same way a track can never be renamed to nothing via the
@@ -233,84 +225,67 @@ interface EditableFieldProps {
   inputClassName?: string
 }
 
-// A value that reads as plain text with a small pencil button beside it, and becomes a text
-// input in place the moment that pencil is clicked — used for the track title and its start/end
-// location, each independently. Saves on blur (or Enter, which just blurs) — same "type freely,
-// save when you leave the field" shape as a photo's caption in PhotoGallery.tsx — and Escape
-// reverts without saving, since unlike a caption these sit right next to their own dedicated
-// trigger rather than being always in an editable state.
+// A value that reads as plain text while `editing` is off, and a text input in its place while
+// it's on. Saves on blur (or Enter, which just blurs) — same "type freely, save when you leave
+// the field" shape as a photo's caption in PhotoGallery.tsx. Escape reverts this field's own
+// draft without saving — it does not leave edit mode, since that's the shared button's call, not
+// any one field's.
 function EditableField({
   value,
   placeholder,
+  editing,
   onSave,
   required,
   inputClassName
 }: EditableFieldProps): React.JSX.Element {
-  const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
-  const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (editing) inputRef.current?.focus()
+    if (editing) {
+      setDraft(value)
+      inputRef.current?.focus()
+    }
+    // Only ever re-sync from `value` when edit mode is freshly entered — re-running this on
+    // every `value` change would stomp an in-progress keystroke the moment a save elsewhere on
+    // the page (e.g. another field's own blur) causes the parent to re-render with new props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing])
-
-  const startEditing = (): void => {
-    setDraft(value)
-    setEditing(true)
-  }
 
   const commit = async (): Promise<void> => {
     const trimmed = draft.trim()
-    setEditing(false)
-    if (required && trimmed === '') return
-    if (trimmed === value) return
-    setSaving(true)
-    try {
-      await onSave(draft)
-    } finally {
-      setSaving(false)
+    if (required && trimmed === '') {
+      setDraft(value)
+      return
     }
+    if (trimmed === value) return
+    await onSave(draft)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Escape') {
       setDraft(value)
-      setEditing(false)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       e.currentTarget.blur()
     }
   }
 
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        type="text"
-        className={inputClassName}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={handleKeyDown}
-        aria-label={placeholder}
-      />
-    )
+  if (!editing) {
+    return <>{value || <span className="editable-field-placeholder">{placeholder}</span>}</>
   }
 
   return (
-    <>
-      {value || <span className="editable-field-placeholder">{placeholder}</span>}
-      <button
-        type="button"
-        className="editable-field-edit-button"
-        onClick={startEditing}
-        disabled={saving}
-        aria-label={`Edit ${placeholder.toLowerCase()}`}
-      >
-        <EditIcon />
-      </button>
-    </>
+    <input
+      ref={inputRef}
+      type="text"
+      className={inputClassName}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={handleKeyDown}
+      aria-label={placeholder}
+    />
   )
 }
 
@@ -338,9 +313,11 @@ function TrackDetail({
   const preOverlayCenterRef = useRef<L.LatLng | null>(null)
   const [error, setError] = useState('')
   const [points, setPoints] = useState<TrackPoint[] | null>(null)
-  // Name and start/end location are each independently inline-editable (see EditableField below)
-  // regardless of whether the track is timed — only the date itself is never editable (see
-  // updateTrack's own doc comment).
+  // Gates every EditableField on the page at once (name, start/end location) — a single shared
+  // Edit/Done button in the header, rather than each field having its own trigger, regardless of
+  // whether the track is timed. Only the date itself is never editable (see updateTrack's own
+  // doc comment).
+  const [editingTrackInfo, setEditingTrackInfo] = useState(false)
   const [deletingTrack, setDeletingTrack] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [scrubMs, setScrubMs] = useState<number | null>(null)
@@ -446,6 +423,7 @@ function TrackDetail({
     let cancelled = false
     setError('')
     setPoints(null)
+    setEditingTrackInfo(false)
     setDeleteError('')
     setScrubMs(null)
     setScrubStatus('ok')
@@ -985,6 +963,15 @@ function TrackDetail({
             &larr; Back to tracks
           </button>
           <div className="track-detail-header-actions">
+            {points !== null && (
+              <button
+                type="button"
+                className="track-title-edit-button"
+                onClick={() => setEditingTrackInfo((v) => !v)}
+              >
+                {editingTrackInfo ? 'Done' : 'Edit'}
+              </button>
+            )}
             <div className="dropdown-menu" ref={addDataMenuRef}>
               <button
                 type="button"
@@ -1054,18 +1041,8 @@ function TrackDetail({
         </div>
 
         <div className="track-header-info">
-          <h1 className="track-title">
-            <EditableField
-              value={track.name}
-              placeholder="Track name"
-              onSave={handleSaveName}
-              required
-              inputClassName="track-title-input"
-            />
-          </h1>
-          <p className="track-date">{formatTrackDate(track.date)}</p>
-          {(previousTrack || nextTrack) && (
-            <div className="track-day-nav">
+          <div className="track-day-nav">
+            <div className="track-day-nav-side">
               {previousTrack && (
                 <button
                   type="button"
@@ -1075,6 +1052,9 @@ function TrackDetail({
                   &larr; {formatTrackDate(previousTrack.date)}
                 </button>
               )}
+            </div>
+            <p className="track-date">{formatTrackDate(track.date)}</p>
+            <div className="track-day-nav-side track-day-nav-side-end">
               {nextTrack && (
                 <button
                   type="button"
@@ -1085,58 +1065,73 @@ function TrackDetail({
                 </button>
               )}
             </div>
-          )}
+          </div>
 
-          <dl className="track-stats">
-            <div className="track-stat">
-              <dt className="track-stat-label">Start location</dt>
-              <dd className="track-stat-value">
-                <EditableField
-                  value={track.startLocation ?? ''}
-                  placeholder="Add start location"
-                  onSave={handleSaveStartLocation}
-                  inputClassName="track-stat-value-input"
-                />
-              </dd>
-            </div>
-            <div className="track-stat">
-              <dt className="track-stat-label">End location</dt>
-              <dd className="track-stat-value">
-                <EditableField
-                  value={track.endLocation ?? ''}
-                  placeholder="Add end location"
-                  onSave={handleSaveEndLocation}
-                  inputClassName="track-stat-value-input"
-                />
-              </dd>
-            </div>
-            {trackStats && (
+          <div className="track-title-card">
+            <h1>
+              <EditableField
+                value={track.name}
+                placeholder="Track name"
+                editing={editingTrackInfo}
+                onSave={handleSaveName}
+                required
+                inputClassName="track-title-input"
+              />
+            </h1>
+
+            <dl className="track-stats">
               <div className="track-stat">
-                <dt className="track-stat-label">Distance</dt>
-                <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
-              </div>
-            )}
-            {trackStartMs !== null && (
-              <div className="track-stat">
-                <dt className="track-stat-label">Start</dt>
-                <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
-              </div>
-            )}
-            {trackEndMs !== null && (
-              <div className="track-stat">
-                <dt className="track-stat-label">End</dt>
-                <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
-              </div>
-            )}
-            {trackStats !== null && trackStats.elevationGainFeet !== null && (
-              <div className="track-stat">
-                <dt className="track-stat-label">Elevation gain</dt>
+                <dt className="track-stat-label">Start location</dt>
                 <dd className="track-stat-value">
-                  {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
+                  <EditableField
+                    value={track.startLocation ?? ''}
+                    placeholder="Add start location"
+                    editing={editingTrackInfo}
+                    onSave={handleSaveStartLocation}
+                    inputClassName="track-stat-value-input"
+                  />
                 </dd>
               </div>
-            )}
-          </dl>
+              <div className="track-stat">
+                <dt className="track-stat-label">End location</dt>
+                <dd className="track-stat-value">
+                  <EditableField
+                    value={track.endLocation ?? ''}
+                    placeholder="Add end location"
+                    editing={editingTrackInfo}
+                    onSave={handleSaveEndLocation}
+                    inputClassName="track-stat-value-input"
+                  />
+                </dd>
+              </div>
+              {trackStats && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Distance</dt>
+                  <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
+                </div>
+              )}
+              {trackStartMs !== null && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Start</dt>
+                  <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
+                </div>
+              )}
+              {trackEndMs !== null && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">End</dt>
+                  <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
+                </div>
+              )}
+              {trackStats !== null && trackStats.elevationGainFeet !== null && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Elevation gain</dt>
+                  <dd className="track-stat-value">
+                    {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
         </div>
 
         {phoneUploadSession && (

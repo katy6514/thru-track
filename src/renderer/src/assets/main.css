@@ -470,23 +470,40 @@ button:hover {
   margin: 8px 0 24px;
 }
 
-/* The date subheading under the title on the track detail page reads as a real heading
-   (h2/h3-scale), not the small inline caption .track-date is elsewhere (e.g. next to a track's
-   name in TrackList's row listing) — scoped to .track-detail rather than changed on .track-date
-   itself so that other usage is untouched. */
+/* The date subheading on the track detail page reads as a real heading (h2/h3-scale), not the
+   small inline caption .track-date is elsewhere (e.g. next to a track's name in TrackList's row
+   listing) — scoped to .track-detail rather than changed on .track-date itself so that other
+   usage is untouched. Sits in .track-day-nav's own centered grid column below, rather than
+   carrying its own margin, so it lines up evenly between the previous/next buttons on either
+   side of it. */
 .track-detail .track-date {
-  margin-bottom: 12px;
+  margin: 0;
   color: var(--ev-c-text-2);
   font-size: 20px;
   font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
 }
 
-/* Previous/next-day buttons just under the date — hidden entirely on either side when there's no
-   adjacent track to go to (e.g. the first or last day of a trip, or a trip with only one track). */
+/* Previous day / date / next day, in three equal-width columns so the date always lands at the
+   true horizontal center of the row — not just centered between whatever the two buttons happen
+   to measure, which plain flex spacing can't guarantee once their labels are different lengths.
+   A missing button (the first or last day of a trip, or a trip with only one track) just leaves
+   its own column empty; the date stays centered regardless. */
 .track-day-nav {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
   margin-bottom: 24px;
+}
+
+.track-day-nav-side {
+  display: flex;
+}
+
+.track-day-nav-side-end {
+  justify-content: flex-end;
 }
 
 .track-day-nav-button {
@@ -494,44 +511,23 @@ button:hover {
   padding: 6px 12px;
 }
 
-.track-day-nav-button-next {
-  margin-left: auto;
-}
-
 .track-header-info {
   margin-bottom: 24px;
 }
 
-/* The pencil button sits right after the title text on the same baseline, rather than the title
-   growing to fill its own line first — inline-flex keeps both centered on one line at any title
-   length. */
-.track-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+/* Groups the title and the metadata table as one visual unit, same soft-card treatment as
+   .journal-preview below — distinct from .track-day-nav above it, which is a navigation strip
+   rather than content about this specific day. */
+.track-title-card {
+  padding: 20px 24px;
+  background-color: var(--color-background-soft);
+  border-radius: 8px;
 }
 
 .track-title-input {
   font: inherit;
   font-weight: 700;
   padding: 2px 6px;
-}
-
-/* The pencil itself: transparent until hovered, so it doesn't visually compete with the value
-   it's attached to — this is true for every EditableField use (title, start/end location). */
-.editable-field-edit-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  color: var(--ev-c-text-2);
-  background: none;
-  border: none;
-}
-
-.editable-field-edit-button:hover {
-  color: var(--color-text);
-  background-color: var(--color-background-soft);
 }
 
 .editable-field-placeholder {
@@ -574,7 +570,7 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 0 0 24px;
+  margin: 0;
 }
 
 .track-stat {
