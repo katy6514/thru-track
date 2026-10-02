@@ -5,8 +5,9 @@
 @import '@fontsource/lora/400-italic.css';
 @import '@fontsource/lora/600.css';
 @import '@fontsource/lora/700.css';
-@import '@fontsource/cantarell/400.css';
-@import '@fontsource/cantarell/700.css';
+@import '@fontsource/plus-jakarta-sans/400.css';
+@import '@fontsource/plus-jakarta-sans/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
 
 /* Theme tokens. The app switches between the dark and light blocks below by setting
    data-theme="dark" | "light" on the root element (see src/renderer/src/theme.ts) based on local
@@ -19,17 +20,17 @@
   --ev-c-white-soft: #f8f8f8;
   --ev-c-white-mute: #f2f2f2;
 
-  --ev-c-black: #1b1b1f;
-  --ev-c-black-soft: #222222;
-  --ev-c-black-mute: #282828;
+  --ev-c-black: #070503;
+  --ev-c-black-soft: #100d08;
+  --ev-c-black-mute: #1e1a14;
 
-  --ev-c-gray-1: #515c67;
-  --ev-c-gray-2: #414853;
-  --ev-c-gray-3: #32363f;
+  --ev-c-gray-1: #928f8a;
+  --ev-c-gray-2: #2f281b;
+  --ev-c-gray-3: #26211a;
 
-  --ev-c-text-1: rgba(255, 255, 245, 0.86);
-  --ev-c-text-2: rgba(235, 235, 245, 0.6);
-  --ev-c-text-3: rgba(235, 235, 245, 0.38);
+  --ev-c-text-1: #f9f8f7;
+  --ev-c-text-2: #928f8a;
+  --ev-c-text-3: rgba(249, 248, 247, 0.38);
 
   --ev-button-alt-border: transparent;
   --ev-button-alt-text: var(--ev-c-text-1);
@@ -43,8 +44,8 @@
   --color-background-mute: var(--ev-c-black-mute);
   --color-text: var(--ev-c-text-1);
 
-  --accent-trail: #2563eb;
-  --accent-trail-label: #6b93e8;
+  --accent-trail: #afbea5;
+  --accent-trail-label: #a9e382;
   --accent-note: #f5a623;
   --accent-note-hover: #ffc266;
   --accent-photo: #4ade80;
@@ -59,17 +60,17 @@
   --ev-c-white-soft: #f8f8f8;
   --ev-c-white-mute: #f2f2f2;
 
-  --ev-c-black: #1b1b1f;
-  --ev-c-black-soft: #222222;
-  --ev-c-black-mute: #282828;
+  --ev-c-black: #070503;
+  --ev-c-black-soft: #100d08;
+  --ev-c-black-mute: #1e1a14;
 
-  --ev-c-gray-1: #515c67;
-  --ev-c-gray-2: #414853;
-  --ev-c-gray-3: #32363f;
+  --ev-c-gray-1: #928f8a;
+  --ev-c-gray-2: #2f281b;
+  --ev-c-gray-3: #26211a;
 
-  --ev-c-text-1: rgba(255, 255, 245, 0.86);
-  --ev-c-text-2: rgba(235, 235, 245, 0.6);
-  --ev-c-text-3: rgba(235, 235, 245, 0.38);
+  --ev-c-text-1: #f9f8f7;
+  --ev-c-text-2: #928f8a;
+  --ev-c-text-3: rgba(249, 248, 247, 0.38);
 
   --ev-button-alt-border: transparent;
   --ev-button-alt-text: var(--ev-c-text-1);
@@ -83,8 +84,8 @@
   --color-background-mute: var(--ev-c-black-mute);
   --color-text: var(--ev-c-text-1);
 
-  --accent-trail: #2563eb;
-  --accent-trail-label: #6b93e8;
+  --accent-trail: #afbea5;
+  --accent-trail-label: #a9e382;
   --accent-note: #f5a623;
   --accent-note-hover: #ffc266;
   --accent-photo: #4ade80;
@@ -106,13 +107,13 @@
   --ev-c-black-soft: #222222;
   --ev-c-black-mute: #282828;
 
-  --ev-c-gray-1: #b8b8b8;
-  --ev-c-gray-2: #cccccc;
-  --ev-c-gray-3: #dedede;
+  --ev-c-gray-1: #e4eae1;
+  --ev-c-gray-2: #ebebeb;
+  --ev-c-gray-3: #e7e7ee;
 
-  --ev-c-text-1: #1b1b1b;
-  --ev-c-text-2: #5c5c5c;
-  --ev-c-text-3: rgba(27, 27, 27, 0.42);
+  --ev-c-text-1: #000000;
+  --ev-c-text-2: #878787;
+  --ev-c-text-3: rgba(0, 0, 0, 0.42);
 
   --ev-button-alt-border: transparent;
   --ev-button-alt-text: var(--ev-c-text-1);
@@ -121,13 +122,13 @@
   --ev-button-alt-hover-text: var(--ev-c-text-1);
   --ev-button-alt-hover-bg: var(--ev-c-gray-2);
 
-  --color-background: #f0f0f0;
-  --color-background-soft: #e4e4e4;
-  --color-background-mute: #d8d8d8;
+  --color-background: #fdfdfd;
+  --color-background-soft: #f5f5f5;
+  --color-background-mute: #edf0f4;
   --color-text: var(--ev-c-text-1);
 
-  --accent-trail: #1d4ed8;
-  --accent-trail-label: #1d4ed8;
+  --accent-trail: #495940;
+  --accent-trail-label: #495940;
   --accent-note: #a8680a;
   --accent-note-hover: #8a5508;
   --accent-photo: #157a3d;
@@ -156,9 +157,23 @@ ul {
    since this app's real content is what a hiker wrote and read, that deserves a text face built
    for reading, not a UI grotesque. */
 :root {
-  --font-display: Cantarell, 'Century Gothic', 'Avenir Next Condensed', 'Trebuchet MS', sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Century Gothic', 'Avenir Next Condensed', 'Trebuchet MS',
+    sans-serif;
   --font-body: Lora, Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
-  --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas,
+    Liberation Mono, monospace;
+
+  /* Sage Green theme radius: large surfaces (cards, panels, menus) use the full value; smaller
+     controls (buttons, inputs, thumbnails) use a reduced tier so they don't look pill-shaped. */
+  --radius: 1.4rem;
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-full: 999px;
+
+  /* The theme's "primary" token is the same sage value in both light and dark mode, with
+     near-black foreground text in both — so unlike the rest of the palette this pair doesn't
+     need separate light/dark blocks. */
+  --color-primary: #afbea5;
+  --color-primary-foreground: #040302;
 }
 
 body {
@@ -166,7 +181,7 @@ body {
   color: var(--color-text);
   background: var(--color-background);
   line-height: 1.6;
-  font-family: var(--font-body);
+  font-family: var(--font-display);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

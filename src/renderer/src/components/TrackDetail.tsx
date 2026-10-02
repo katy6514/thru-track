@@ -1078,6 +1078,20 @@ function TrackDetail({
             </div>
 
             <dl className="track-stats">
+              {trackStats && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Distance</dt>
+                  <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
+                </div>
+              )}
+              {trackStats !== null && trackStats.elevationGainFeet !== null && (
+                <div className="track-stat">
+                  <dt className="track-stat-label">Elevation gain</dt>
+                  <dd className="track-stat-value">
+                    {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
+                  </dd>
+                </div>
+              )}
               <div className="track-stat">
                 <dt className="track-stat-label">Start</dt>
                 <dd className="track-stat-value">
@@ -1114,20 +1128,6 @@ function TrackDetail({
                   />
                 </dd>
               </div>
-              {trackStats && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">Distance</dt>
-                  <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
-                </div>
-              )}
-              {trackStats !== null && trackStats.elevationGainFeet !== null && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">Elevation gain</dt>
-                  <dd className="track-stat-value">
-                    {Math.round(trackStats.elevationGainFeet).toLocaleString()} ft
-                  </dd>
-                </div>
-              )}
             </dl>
           </div>
         </div>
