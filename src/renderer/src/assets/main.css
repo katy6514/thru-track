@@ -466,49 +466,39 @@ button:hover {
 }
 
 .track-detail h1 {
-  font-size: 28px;
-  margin: 8px 0 24px;
+  font-size: 40px;
+  margin: 0;
 }
 
-/* The date subheading on the track detail page reads as a real heading (h2/h3-scale), not the
-   small inline caption .track-date is elsewhere (e.g. next to a track's name in TrackList's row
-   listing) — scoped to .track-detail rather than changed on .track-date itself so that other
-   usage is untouched. Sits in .track-day-nav's own centered grid column below, rather than
-   carrying its own margin, so it lines up evenly between the previous/next buttons on either
-   side of it. */
+/* The date subheading now sits inside .track-title-card, directly above the title row — scoped
+   to .track-detail rather than changed on .track-date itself so that other usage (e.g. next to a
+   track's name in TrackList's row listing) is untouched. */
 .track-detail .track-date {
-  margin: 0;
+  margin: 0 0 8px;
   color: var(--ev-c-text-2);
   font-size: 20px;
   font-weight: 600;
-  text-align: center;
-  white-space: nowrap;
 }
 
-/* Previous day / date / next day, in three equal-width columns so the date always lands at the
-   true horizontal center of the row — not just centered between whatever the two buttons happen
-   to measure, which plain flex spacing can't guarantee once their labels are different lengths.
-   A missing button (the first or last day of a trip, or a trip with only one track) just leaves
-   its own column empty; the date stays centered regardless. */
+/* Previous day / next day, flanking opposite ends of the row — a missing button on either side
+   (the first or last day of a trip, or a trip with only one track) just leaves that side empty. */
 .track-day-nav {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
+  display: flex;
+  justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
-}
-
-.track-day-nav-side {
-  display: flex;
-}
-
-.track-day-nav-side-end {
-  justify-content: flex-end;
 }
 
 .track-day-nav-button {
   font-size: 13px;
   padding: 6px 12px;
+}
+
+/* space-between only keeps the next button on the right when both buttons are present — on the
+   first day of a trip, where the previous button is absent, next would otherwise fall back to
+   the row's start (left) side as the lone flex child. */
+.track-day-nav-button-next {
+  margin-left: auto;
 }
 
 .track-header-info {
@@ -522,6 +512,23 @@ button:hover {
   padding: 20px 24px;
   background-color: var(--color-background-soft);
   border-radius: 8px;
+}
+
+/* Title on the left, Edit and Add data pinned to the right — flex-start rather than center, so
+   a long title that wraps to a second line doesn't drag the buttons down into the middle of it. */
+.track-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.track-title-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .track-title-input {
@@ -593,6 +600,19 @@ button:hover {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
+}
+
+/* The clock time ahead of a combined Start/End row's location — same weight as the location
+   text beside it, just set off by .track-stat-sep rather than a visual weight difference, since
+   neither one is more important than the other. */
+.track-stat-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.track-stat-sep {
+  margin: 0 6px;
+  color: var(--ev-c-text-2);
+  font-weight: normal;
 }
 
 /* Positions the photo overlay (below) relative to the map instead of the page, so it covers
@@ -672,20 +692,9 @@ button:hover {
   opacity: 0;
 }
 
-/* The back link stays top-left, in normal flow; Edit and Add data sit flush top-right as a group
-   — the same row, space-between rather than either button being absolutely positioned, so they
-   never need to fight the page's own layout for where they land. */
 .track-detail-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.track-detail-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .journal-preview {

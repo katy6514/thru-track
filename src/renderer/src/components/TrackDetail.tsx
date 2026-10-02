@@ -962,127 +962,131 @@ function TrackDetail({
           <button type="button" className="back-link" onClick={onBack}>
             &larr; Back to tracks
           </button>
-          <div className="track-detail-header-actions">
-            {points !== null && (
-              <button
-                type="button"
-                className="track-title-edit-button"
-                onClick={() => setEditingTrackInfo((v) => !v)}
-              >
-                {editingTrackInfo ? 'Done' : 'Edit'}
-              </button>
-            )}
-            <div className="dropdown-menu" ref={addDataMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowAddDataMenu((v) => !v)}
-                disabled={
-                  importingPhotos ||
-                  !!pendingOffsetImport ||
-                  importingMessages ||
-                  startingPhoneUpload
-                }
-              >
-                {importingPhotos
-                  ? 'Importing photos…'
-                  : importingMessages
-                    ? 'Importing…'
-                    : startingPhoneUpload
-                      ? 'Starting…'
-                      : 'Add data ▾'}
-              </button>
-              {showAddDataMenu && (
-                <div className="dropdown-menu-options dropdown-menu-options-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      journalPreviewRef.current?.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'center'
-                      })
-                      handleStartEditingJournal()
-                    }}
-                  >
-                    Jump to journal entry
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      handleImportPhotos()
-                    }}
-                  >
-                    Import photos…
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      handleImportMessages()
-                    }}
-                  >
-                    Import messages (CSV)…
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddDataMenu(false)
-                      handleStartPhoneUpload()
-                    }}
-                    disabled={!!phoneUploadSession}
-                  >
-                    Upload photos from phone…
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
         <div className="track-header-info">
           <div className="track-day-nav">
-            <div className="track-day-nav-side">
-              {previousTrack && (
-                <button
-                  type="button"
-                  className="track-day-nav-button"
-                  onClick={() => onOpenTrack(previousTrack.id)}
-                >
-                  &larr; {formatTrackDate(previousTrack.date)}
-                </button>
-              )}
-            </div>
-            <p className="track-date">{formatTrackDate(track.date)}</p>
-            <div className="track-day-nav-side track-day-nav-side-end">
-              {nextTrack && (
-                <button
-                  type="button"
-                  className="track-day-nav-button track-day-nav-button-next"
-                  onClick={() => onOpenTrack(nextTrack.id)}
-                >
-                  {formatTrackDate(nextTrack.date)} &rarr;
-                </button>
-              )}
-            </div>
+            {previousTrack && (
+              <button
+                type="button"
+                className="track-day-nav-button"
+                onClick={() => onOpenTrack(previousTrack.id)}
+              >
+                &larr; {formatTrackDate(previousTrack.date)}
+              </button>
+            )}
+            {nextTrack && (
+              <button
+                type="button"
+                className="track-day-nav-button track-day-nav-button-next"
+                onClick={() => onOpenTrack(nextTrack.id)}
+              >
+                {formatTrackDate(nextTrack.date)} &rarr;
+              </button>
+            )}
           </div>
 
           <div className="track-title-card">
-            <h1>
-              <EditableField
-                value={track.name}
-                placeholder="Track name"
-                editing={editingTrackInfo}
-                onSave={handleSaveName}
-                required
-                inputClassName="track-title-input"
-              />
-            </h1>
+            <p className="track-date">{formatTrackDate(track.date)}</p>
+            <div className="track-title-row">
+              <h1>
+                <EditableField
+                  value={track.name}
+                  placeholder="Track name"
+                  editing={editingTrackInfo}
+                  onSave={handleSaveName}
+                  required
+                  inputClassName="track-title-input"
+                />
+              </h1>
+              <div className="track-title-card-actions">
+                {points !== null && (
+                  <button
+                    type="button"
+                    className="track-title-edit-button"
+                    onClick={() => setEditingTrackInfo((v) => !v)}
+                  >
+                    {editingTrackInfo ? 'Done' : 'Edit'}
+                  </button>
+                )}
+                <div className="dropdown-menu" ref={addDataMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddDataMenu((v) => !v)}
+                    disabled={
+                      importingPhotos ||
+                      !!pendingOffsetImport ||
+                      importingMessages ||
+                      startingPhoneUpload
+                    }
+                  >
+                    {importingPhotos
+                      ? 'Importing photos…'
+                      : importingMessages
+                        ? 'Importing…'
+                        : startingPhoneUpload
+                          ? 'Starting…'
+                          : 'Add data ▾'}
+                  </button>
+                  {showAddDataMenu && (
+                    <div className="dropdown-menu-options dropdown-menu-options-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddDataMenu(false)
+                          journalPreviewRef.current?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                          })
+                          handleStartEditingJournal()
+                        }}
+                      >
+                        Jump to journal entry
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddDataMenu(false)
+                          handleImportPhotos()
+                        }}
+                      >
+                        Import photos…
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddDataMenu(false)
+                          handleImportMessages()
+                        }}
+                      >
+                        Import messages (CSV)…
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddDataMenu(false)
+                          handleStartPhoneUpload()
+                        }}
+                        disabled={!!phoneUploadSession}
+                      >
+                        Upload photos from phone…
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             <dl className="track-stats">
               <div className="track-stat">
-                <dt className="track-stat-label">Start location</dt>
+                <dt className="track-stat-label">Start</dt>
                 <dd className="track-stat-value">
+                  {trackStartMs !== null && (
+                    <>
+                      <span className="track-stat-time">{formatClockTime(trackStartMs)}</span>
+                      <span className="track-stat-sep">&mdash;</span>
+                    </>
+                  )}
                   <EditableField
                     value={track.startLocation ?? ''}
                     placeholder="Add start location"
@@ -1093,8 +1097,14 @@ function TrackDetail({
                 </dd>
               </div>
               <div className="track-stat">
-                <dt className="track-stat-label">End location</dt>
+                <dt className="track-stat-label">End</dt>
                 <dd className="track-stat-value">
+                  {trackEndMs !== null && (
+                    <>
+                      <span className="track-stat-time">{formatClockTime(trackEndMs)}</span>
+                      <span className="track-stat-sep">&mdash;</span>
+                    </>
+                  )}
                   <EditableField
                     value={track.endLocation ?? ''}
                     placeholder="Add end location"
@@ -1108,18 +1118,6 @@ function TrackDetail({
                 <div className="track-stat">
                   <dt className="track-stat-label">Distance</dt>
                   <dd className="track-stat-value">{trackStats.distanceMiles.toFixed(1)} mi</dd>
-                </div>
-              )}
-              {trackStartMs !== null && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">Start</dt>
-                  <dd className="track-stat-value">{formatClockTime(trackStartMs)}</dd>
-                </div>
-              )}
-              {trackEndMs !== null && (
-                <div className="track-stat">
-                  <dt className="track-stat-label">End</dt>
-                  <dd className="track-stat-value">{formatClockTime(trackEndMs)}</dd>
                 </div>
               )}
               {trackStats !== null && trackStats.elevationGainFeet !== null && (
