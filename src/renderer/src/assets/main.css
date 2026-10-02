@@ -188,13 +188,18 @@ button:disabled {
 
 .track-list h1 {
   font-size: 28px;
-  margin: 8px 0 24px;
+  margin: 0 0 24px;
 }
 
+/* Owns its own bottom margin (rather than leaning on whatever heading/row happens to follow it
+   on a given page) so the gap below it is identical on TrackList and TrackDetail regardless of
+   what each page puts next. */
 .back-link {
+  display: inline-block;
   background: none;
   border: none;
   padding: 0;
+  margin-bottom: 8px;
   color: var(--ev-c-text-2);
 }
 
@@ -504,6 +509,7 @@ button:disabled {
 }
 
 .track-header-info {
+  margin-top: 8px;
   margin-bottom: 24px;
 }
 
@@ -693,11 +699,6 @@ button:disabled {
 
 .track-map-zoom-hint-hidden {
   opacity: 0;
-}
-
-.track-detail-header {
-  display: flex;
-  align-items: center;
 }
 
 .journal-preview {

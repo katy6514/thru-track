@@ -958,11 +958,9 @@ function TrackDetail({
   return (
     <div className="track-detail-layout">
       <div className="track-detail">
-        <div className="track-detail-header">
-          <button type="button" className="back-link" onClick={onBack}>
-            &larr; Back to tracks
-          </button>
-        </div>
+        <button type="button" className="back-link" onClick={onBack}>
+          &larr; Back to tracks
+        </button>
 
         <div className="track-header-info">
           <div className="track-day-nav">
