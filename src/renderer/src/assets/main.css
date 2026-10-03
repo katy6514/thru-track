@@ -49,7 +49,7 @@ button:disabled {
 }
 
 .trip-list {
-  max-width: 640px;
+  max-width: 800px;
   width: 100%;
   margin: 0 auto;
 }
@@ -119,31 +119,77 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+}
+
+/* ~4x a plain text row's height, so there's room for the name, date range and states stacked up,
+   plus the right-hand photo. Positioned/clipped so its own ::before (the photo) can be masked to
+   the card's rounded corners instead of overhanging them. */
+.trip-name {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 4px;
+  height: 200px;
+  padding: 20px 28px;
   background-color: var(--color-background);
   border: 1px solid var(--ev-c-gray-2);
   border-radius: var(--radius);
-}
-
-.trip-name {
-  flex: 1;
-  font-family: var(--font-display);
-  font-weight: 600;
   text-align: left;
-  background: none;
-  border: none;
-  padding: 0;
   color: var(--color-text);
 }
 
 .trip-name:hover {
-  background: none;
-  text-decoration: underline;
+  border-color: var(--color-primary);
 }
 
-.trip-date {
+/* The trip's photo, confined to the right 3/4 of the card — set as a --trip-photo custom
+   property per row (see TripList.tsx) since a pseudo-element can't take a React style prop
+   directly. The mask is what creates the fade: transparent (hidden, card background shows
+   through) at the photo's own left edge, fully opaque (photo fully visible) at the card's right
+   edge — not a color overlay, the photo's own visibility is what ramps up left to right. */
+.trip-name::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 50%;
+  background-image: var(--trip-photo, none);
+  background-size: cover;
+  background-position: center;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 100%);
+}
+
+.trip-name-text,
+.trip-date-range,
+.trip-states {
+  position: relative;
+  z-index: 1;
+}
+
+.trip-name-text {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.trip-date-range {
+  font-size: 15px;
+  font-weight: 500;
   color: var(--ev-c-text-2);
-  font-size: 13px;
+}
+
+.trip-states {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ev-c-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .trip-actions {
@@ -162,7 +208,7 @@ button:disabled {
 }
 
 .track-list {
-  max-width: 1240px;
+  max-width: 800px;
   width: 100%;
   margin: 0 auto;
 }
