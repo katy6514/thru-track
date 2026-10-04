@@ -18,7 +18,10 @@ interface Api {
   trips: {
     create: (name: string) => Promise<Trip>
     list: () => Promise<Trip[]>
+    listArchived: () => Promise<Trip[]>
     rename: (id: number, name: string) => Promise<Trip>
+    archive: (id: number) => Promise<Trip>
+    unarchive: (id: number) => Promise<Trip>
     delete: (id: number) => Promise<void>
   }
   tracks: {

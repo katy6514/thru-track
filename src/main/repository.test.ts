@@ -73,6 +73,33 @@ describe('Repository trip CRUD', () => {
   it('throws when deleting a trip that does not exist', () => {
     expect(() => repo.deleteTrip(999)).toThrow()
   })
+
+  it('archives a trip, removing it from listTrips and adding it to listArchivedTrips', () => {
+    const trip = repo.createTrip('To Archive')
+    const archived = repo.archiveTrip(trip.id)
+    expect(archived.archivedAt).not.toBeNull()
+    expect(repo.listTrips()).toEqual([])
+    expect(repo.listArchivedTrips().map((t) => t.id)).toEqual([trip.id])
+  })
+
+  it('unarchives a trip, returning it to listTrips', () => {
+    const trip = repo.createTrip('Round Trip')
+    repo.archiveTrip(trip.id)
+    const unarchived = repo.unarchiveTrip(trip.id)
+    expect(unarchived.archivedAt).toBeNull()
+    expect(repo.listTrips().map((t) => t.id)).toEqual([trip.id])
+    expect(repo.listArchivedTrips()).toEqual([])
+  })
+
+  it('throws when archiving or unarchiving a trip that does not exist', () => {
+    expect(() => repo.archiveTrip(999)).toThrow()
+    expect(() => repo.unarchiveTrip(999)).toThrow()
+  })
+
+  it('a newly created trip is not archived', () => {
+    const trip = repo.createTrip('Fresh Trip')
+    expect(trip.archivedAt).toBeNull()
+  })
 })
 
 function sampleGpx({

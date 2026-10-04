@@ -20,8 +20,11 @@ const api = {
   trips: {
     create: (name: string): Promise<Trip> => ipcRenderer.invoke('trips:create', name),
     list: (): Promise<Trip[]> => ipcRenderer.invoke('trips:list'),
+    listArchived: (): Promise<Trip[]> => ipcRenderer.invoke('trips:listArchived'),
     rename: (id: number, name: string): Promise<Trip> =>
       ipcRenderer.invoke('trips:rename', id, name),
+    archive: (id: number): Promise<Trip> => ipcRenderer.invoke('trips:archive', id),
+    unarchive: (id: number): Promise<Trip> => ipcRenderer.invoke('trips:unarchive', id),
     delete: (id: number): Promise<void> => ipcRenderer.invoke('trips:delete', id)
   },
   tracks: {

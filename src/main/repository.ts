@@ -9,6 +9,7 @@ interface TripRow {
   name: string
   created_at: string
   updated_at: string
+  archived_at: string | null
 }
 
 interface TrackRow {
@@ -134,7 +135,13 @@ interface MessageRow {
 }
 
 function toTrip(row: TripRow): Trip {
-  return { id: row.id, name: row.name, createdAt: row.created_at, updatedAt: row.updated_at }
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at
+  }
 }
 
 function toTrack(row: TrackRow): Track {
@@ -205,9 +212,17 @@ export class Repository {
     )
   }
 
+  // Excludes archived trips — see listArchivedTrips for those.
   listTrips(): Trip[] {
     const rows = this.db
-      .prepare('SELECT * FROM trips ORDER BY created_at DESC, id DESC')
+      .prepare('SELECT * FROM trips WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC')
+      .all() as TripRow[]
+    return rows.map(toTrip)
+  }
+
+  listArchivedTrips(): Trip[] {
+    const rows = this.db
+      .prepare('SELECT * FROM trips WHERE archived_at IS NOT NULL ORDER BY archived_at DESC')
       .all() as TripRow[]
     return rows.map(toTrip)
   }
@@ -218,6 +233,26 @@ export class Repository {
     const info = this.db
       .prepare('UPDATE trips SET name = ?, updated_at = ? WHERE id = ?')
       .run(trimmed, now, id)
+    if (info.changes === 0) throw new Error(`Trip ${id} not found`)
+    return toTrip(this.db.prepare('SELECT * FROM trips WHERE id = ?').get(id) as TripRow)
+  }
+
+  // Archiving/unarchiving only ever touches the trip row itself — every track, photo, message,
+  // and entry underneath it is left completely alone, unlike deleteTrip.
+  archiveTrip(id: number): Trip {
+    const now = new Date().toISOString()
+    const info = this.db
+      .prepare('UPDATE trips SET archived_at = ?, updated_at = ? WHERE id = ?')
+      .run(now, now, id)
+    if (info.changes === 0) throw new Error(`Trip ${id} not found`)
+    return toTrip(this.db.prepare('SELECT * FROM trips WHERE id = ?').get(id) as TripRow)
+  }
+
+  unarchiveTrip(id: number): Trip {
+    const now = new Date().toISOString()
+    const info = this.db
+      .prepare('UPDATE trips SET archived_at = NULL, updated_at = ? WHERE id = ?')
+      .run(now, id)
     if (info.changes === 0) throw new Error(`Trip ${id} not found`)
     return toTrip(this.db.prepare('SELECT * FROM trips WHERE id = ?').get(id) as TripRow)
   }

@@ -3,6 +3,10 @@ export interface Trip {
   name: string
   createdAt: string
   updatedAt: string
+  // Null for an active trip; set to when it was archived otherwise. An archived trip is excluded
+  // from the main trip list (see Repository.listTrips) but not deleted — everything under it is
+  // untouched and it can be unarchived back into the main list at any time.
+  archivedAt: string | null
 }
 
 export interface Track {

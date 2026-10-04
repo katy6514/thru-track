@@ -43,9 +43,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('trips:create', (_event, name: string) => repository.createTrip(name))
   ipcMain.handle('trips:list', () => repository.listTrips())
+  ipcMain.handle('trips:listArchived', () => repository.listArchivedTrips())
   ipcMain.handle('trips:rename', (_event, id: number, name: string) =>
     repository.renameTrip(id, name)
   )
+  ipcMain.handle('trips:archive', (_event, id: number) => repository.archiveTrip(id))
+  ipcMain.handle('trips:unarchive', (_event, id: number) => repository.unarchiveTrip(id))
   ipcMain.handle('trips:delete', async (_event, id: number): Promise<void> => {
     // deleteTrip only removes DB rows (in its own transaction) and hands back the filepaths of
     // every photo that was under the trip; the actual file unlinks happen here, after the

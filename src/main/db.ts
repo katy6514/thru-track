@@ -95,7 +95,18 @@ export function migrate(database: Database.Database): void {
   migratePhotosContentHash(database)
   migratePhotosCaption(database)
   migrateTracksLocations(database)
+  migrateTripsArchivedAt(database)
   dropJournalNotes(database)
+}
+
+// trips.archived_at was added after trips already existed in the wild — same plain nullable ADD
+// COLUMN as photos.caption above. Existing trips get NULL, the same "active, not archived" state
+// a freshly-created trip starts in — no backfill needed.
+function migrateTripsArchivedAt(database: Database.Database): void {
+  const columns = database.prepare('PRAGMA table_info(trips)').all() as { name: string }[]
+  if (columns.some((c) => c.name === 'archived_at')) return
+
+  database.exec('ALTER TABLE trips ADD COLUMN archived_at TEXT')
 }
 
 // The journal-note feature (a short text pinned to a moment on a track's timeline, distinct from

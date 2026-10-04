@@ -18,6 +18,21 @@ function formatTripDate(dateStr: string): string {
   })
 }
 
+// Shared by refresh (the active trip list) and refreshArchived (the archived one) — both need the
+// same trip-list-plus-summaries loading, just from a different endpoint.
+async function loadTripsWithSummaries(
+  fetchTrips: () => Promise<Trip[]>
+): Promise<{ trips: Trip[]; summaries: Map<number, TripSummary> }> {
+  const list = await fetchTrips()
+  const entries = await Promise.all(
+    list.map(async (trip): Promise<[number, TripSummary]> => [
+      trip.id,
+      await buildTripSummary(trip.id)
+    ])
+  )
+  return { trips: list, summaries: new Map(entries) }
+}
+
 // Built from existing per-track endpoints rather than a dedicated backend aggregate — this is a
 // local SQLite-backed app and a trip's track count is small enough that a handful of extra IPC
 // round trips per trip, done in parallel, is cheap.
@@ -64,30 +79,47 @@ interface TripListProps {
 function TripList({ onSelectTrip, onShowHowTo }: TripListProps): React.JSX.Element {
   const [trips, setTrips] = useState<Trip[]>([])
   const [summaries, setSummaries] = useState<Map<number, TripSummary>>(new Map())
+  const [archivedTrips, setArchivedTrips] = useState<Trip[]>([])
+  const [archivedSummaries, setArchivedSummaries] = useState<Map<number, TripSummary>>(new Map())
+  // The archived list is loaded lazily (only once the hiker actually asks to see it, in
+  // toggleArchivedView below) rather than alongside the active list on every mount — most
+  // sessions never open it, and building a summary for every archived trip is exactly as costly
+  // as doing it for every active one.
+  const [viewingArchived, setViewingArchived] = useState(false)
   const [newTripName, setNewTripName] = useState('')
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [error, setError] = useState('')
-  // Rename/Delete stay hidden until the hiker explicitly asks to edit the list — keeps a plain
-  // trip row down to just its name and date the rest of the time, rather than two buttons on
-  // every row all the time.
+  // Rename/Archive/Delete stay hidden until the hiker explicitly asks to edit the list — keeps a
+  // plain trip row down to just its name and date the rest of the time, rather than three buttons
+  // on every row all the time.
   const [editing, setEditing] = useState(false)
 
   const refresh = async (): Promise<void> => {
-    const list = await window.api.trips.list()
+    const { trips: list, summaries: map } = await loadTripsWithSummaries(window.api.trips.list)
     setTrips(list)
-    const entries = await Promise.all(
-      list.map(async (trip): Promise<[number, TripSummary]> => [
-        trip.id,
-        await buildTripSummary(trip.id)
-      ])
+    setSummaries(map)
+  }
+
+  const refreshArchived = async (): Promise<void> => {
+    const { trips: list, summaries: map } = await loadTripsWithSummaries(
+      window.api.trips.listArchived
     )
-    setSummaries(new Map(entries))
+    setArchivedTrips(list)
+    setArchivedSummaries(map)
   }
 
   useEffect(() => {
     refresh()
   }, [])
+
+  const toggleArchivedView = async (): Promise<void> => {
+    const next = !viewingArchived
+    setEditing(false)
+    setRenamingId(null)
+    setViewingArchived(next)
+    if (next) await refreshArchived()
+  }
 
   const handleCreate = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -119,6 +151,27 @@ function TripList({ onSelectTrip, onShowHowTo }: TripListProps): React.JSX.Eleme
     try {
       await window.api.trips.rename(id, renameValue)
       setRenamingId(null)
+      await (viewingArchived ? refreshArchived() : refresh())
+    } catch (err) {
+      setError(cleanErrorMessage(err))
+    }
+  }
+
+  const handleArchive = async (trip: Trip): Promise<void> => {
+    setError('')
+    try {
+      await window.api.trips.archive(trip.id)
+      await refresh()
+    } catch (err) {
+      setError(cleanErrorMessage(err))
+    }
+  }
+
+  const handleUnarchive = async (trip: Trip): Promise<void> => {
+    setError('')
+    try {
+      await window.api.trips.unarchive(trip.id)
+      await refreshArchived()
       await refresh()
     } catch (err) {
       setError(cleanErrorMessage(err))
@@ -136,34 +189,115 @@ function TripList({ onSelectTrip, onShowHowTo }: TripListProps): React.JSX.Eleme
     setError('')
     try {
       await window.api.trips.delete(trip.id)
-      await refresh()
+      await (viewingArchived ? refreshArchived() : refresh())
     } catch (err) {
       setError(cleanErrorMessage(err))
     }
   }
 
+  // Shared by the active and archived lists below — identical row shape (rename form, trip
+  // card with its summary, then whatever action buttons fit that list) with only the actions
+  // actually differing between them.
+  const renderTripRow = (
+    trip: Trip,
+    summary: TripSummary | undefined,
+    actions: React.ReactNode
+  ): React.JSX.Element => (
+    <li key={trip.id} className="trip-row">
+      {renamingId === trip.id ? (
+        <form className="rename-form" onSubmit={(e) => submitRename(e, trip.id)}>
+          <input
+            type="text"
+            value={renameValue}
+            autoFocus
+            onChange={(e) => setRenameValue(e.target.value)}
+          />
+          <button type="submit">Save</button>
+          <button type="button" onClick={() => setRenamingId(null)}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <>
+          <button
+            type="button"
+            className="trip-name"
+            onClick={() => onSelectTrip(trip)}
+            style={
+              summary?.photoDataUri
+                ? ({ '--trip-photo': `url(${summary.photoDataUri})` } as React.CSSProperties)
+                : undefined
+            }
+          >
+            <span className="trip-name-text">{trip.name}</span>
+            {summary?.dateRangeLabel && (
+              <span className="trip-date-range">{summary.dateRangeLabel}</span>
+            )}
+            {summary && summary.states.length > 0 && (
+              <span className="trip-states">{summary.states.join(', ')}</span>
+            )}
+          </button>
+          {actions}
+        </>
+      )}
+    </li>
+  )
+
   return (
     <div className="trip-list">
       <div className="trip-list-header">
-        <h1>Trips</h1>
-        <button type="button" className="how-to-link" onClick={onShowHowTo}>
-          How to use this app
-        </button>
+        <h1>{viewingArchived ? 'Archived Trips' : 'Trips'}</h1>
+        <div className="trip-list-header-actions">
+          <button type="button" className="how-to-link" onClick={toggleArchivedView}>
+            {viewingArchived ? 'Back to trips' : 'View archived trips'}
+          </button>
+          {!viewingArchived && (
+            <button type="button" className="how-to-link" onClick={onShowHowTo}>
+              How to use this app
+            </button>
+          )}
+        </div>
       </div>
 
-      <form className="new-trip-form" onSubmit={handleCreate}>
-        <input
-          type="text"
-          placeholder="New trip name (e.g. PCT 2026)"
-          value={newTripName}
-          onChange={(e) => setNewTripName(e.target.value)}
-        />
-        <button type="submit">Create trip</button>
-      </form>
+      {!viewingArchived && (
+        <form className="new-trip-form" onSubmit={handleCreate}>
+          <input
+            type="text"
+            placeholder="New trip name (e.g. PCT 2026)"
+            value={newTripName}
+            onChange={(e) => setNewTripName(e.target.value)}
+          />
+          <button type="submit">Create trip</button>
+        </form>
+      )}
 
       {error && <p className="error">{error}</p>}
 
-      {trips.length === 0 ? (
+      {viewingArchived ? (
+        archivedTrips.length === 0 ? (
+          <p className="empty">No archived trips.</p>
+        ) : (
+          <ul className="trips">
+            {archivedTrips.map((trip) =>
+              renderTripRow(
+                trip,
+                archivedSummaries.get(trip.id),
+                <div className="trip-actions">
+                  <button type="button" onClick={() => handleUnarchive(trip)}>
+                    Unarchive
+                  </button>
+                  <button type="button" onClick={() => startRename(trip)}>
+                    Rename
+                  </button>
+                  <button type="button" onClick={() => handleDelete(trip)}>
+                    Delete
+                  </button>
+                </div>
+              )
+            )}
+          </ul>
+        )
+      ) : trips.length === 0 ? (
         <p className="empty">No trips yet. Create one above to get started.</p>
       ) : (
         <>
@@ -173,60 +307,25 @@ function TripList({ onSelectTrip, onShowHowTo }: TripListProps): React.JSX.Eleme
             </button>
           </div>
           <ul className="trips">
-            {trips.map((trip) => {
-              const summary = summaries.get(trip.id)
-              return (
-                <li key={trip.id} className="trip-row">
-                  {renamingId === trip.id ? (
-                    <form className="rename-form" onSubmit={(e) => submitRename(e, trip.id)}>
-                      <input
-                        type="text"
-                        value={renameValue}
-                        autoFocus
-                        onChange={(e) => setRenameValue(e.target.value)}
-                      />
-                      <button type="submit">Save</button>
-                      <button type="button" onClick={() => setRenamingId(null)}>
-                        Cancel
-                      </button>
-                    </form>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="trip-name"
-                        onClick={() => onSelectTrip(trip)}
-                        style={
-                          summary?.photoDataUri
-                            ? ({
-                                '--trip-photo': `url(${summary.photoDataUri})`
-                              } as React.CSSProperties)
-                            : undefined
-                        }
-                      >
-                        <span className="trip-name-text">{trip.name}</span>
-                        {summary?.dateRangeLabel && (
-                          <span className="trip-date-range">{summary.dateRangeLabel}</span>
-                        )}
-                        {summary && summary.states.length > 0 && (
-                          <span className="trip-states">{summary.states.join(', ')}</span>
-                        )}
-                      </button>
-                      {editing && (
-                        <div className="trip-actions">
-                          <button type="button" onClick={() => startRename(trip)}>
-                            Rename
-                          </button>
-                          <button type="button" onClick={() => handleDelete(trip)}>
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </li>
+            {trips.map((trip) =>
+              renderTripRow(
+                trip,
+                summaries.get(trip.id),
+                editing && (
+                  <div className="trip-actions">
+                    <button type="button" onClick={() => startRename(trip)}>
+                      Rename
+                    </button>
+                    <button type="button" onClick={() => handleArchive(trip)}>
+                      Archive
+                    </button>
+                    <button type="button" onClick={() => handleDelete(trip)}>
+                      Delete
+                    </button>
+                  </div>
+                )
               )
-            })}
+            )}
           </ul>
         </>
       )}
