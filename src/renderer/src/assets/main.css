@@ -753,12 +753,13 @@ button:disabled {
   opacity: 0;
 }
 
+/* No card chrome (border/background) — reads as a page of writing rather than a boxed-in UI
+   panel, same idea as an article body rather than a form field showing back what was typed. The
+   generous padding gives the text room to breathe against the page edges and the header above,
+   standing in for the visual separation the border used to provide. */
 .journal-preview {
   margin-top: 16px;
-  padding: 16px;
-  background-color: var(--color-background);
-  border: 1px solid var(--ev-c-gray-2);
-  border-radius: var(--radius);
+  padding: 16px 32px 32px;
 }
 
 .journal-preview-header {
@@ -770,7 +771,7 @@ button:disabled {
 }
 
 .journal-preview-header h2 {
-  font-size: 16px;
+  font-size: 20px;
 }
 
 .journal-preview-header-actions {
@@ -786,11 +787,11 @@ button:disabled {
 }
 
 .journal-preview-text {
-  margin: 0 0 12px;
+  margin: 0 0 20px;
   color: var(--color-text);
   font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 18px;
+  line-height: 1.7;
   white-space: pre-wrap;
 }
 
