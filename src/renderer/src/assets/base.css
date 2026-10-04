@@ -44,7 +44,7 @@
   --color-background-mute: var(--ev-c-black-mute);
   --color-text: var(--ev-c-text-1);
 
-  --accent-trail: #afbea5;
+  --accent-trail: #495940;
   --accent-trail-label: #a9e382;
   --accent-note: #f5a623;
   --accent-note-hover: #ffc266;
@@ -53,6 +53,13 @@
   --accent-message: #eab308;
   --accent-message-hover: #fde047;
   --accent-danger: #ff6b6b;
+
+  /* Darker than light mode's sage primary — #afbea5 read as too bright against this near-black
+     palette, so dark mode uses the same deep forest green as light mode's accent instead. The
+     foreground flips to a light color to match: near-black text (fine on light sage) would be
+     unreadable on a dark green fill. */
+  --color-primary: #495940;
+  --color-primary-foreground: #f9f8f7;
 }
 
 :root[data-theme='dark'] {
@@ -84,7 +91,7 @@
   --color-background-mute: var(--ev-c-black-mute);
   --color-text: var(--ev-c-text-1);
 
-  --accent-trail: #afbea5;
+  --accent-trail: #495940;
   --accent-trail-label: #a9e382;
   --accent-note: #f5a623;
   --accent-note-hover: #ffc266;
@@ -93,6 +100,9 @@
   --accent-message: #eab308;
   --accent-message-hover: #fde047;
   --accent-danger: #ff6b6b;
+
+  --color-primary: #495940;
+  --color-primary-foreground: #f9f8f7;
 }
 
 /* Light palette: a clean, neutral grayscale "paper" ground — no color tint on the background or
@@ -136,6 +146,9 @@
   --accent-message: #a16207;
   --accent-message-hover: #78350f;
   --accent-danger: #d13c3c;
+
+  --color-primary: #afbea5;
+  --color-primary-foreground: #040302;
 }
 
 *,
@@ -168,12 +181,6 @@ ul {
   --radius: 1.4rem;
   --radius-sm: calc(var(--radius) - 8px);
   --radius-full: 999px;
-
-  /* The theme's "primary" token is the same sage value in both light and dark mode, with
-     near-black foreground text in both — so unlike the rest of the palette this pair doesn't
-     need separate light/dark blocks. */
-  --color-primary: #afbea5;
-  --color-primary-foreground: #040302;
 }
 
 body {
