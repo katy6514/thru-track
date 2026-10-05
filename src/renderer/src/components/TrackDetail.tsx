@@ -27,6 +27,7 @@ import {
 } from '../../../shared/clusterTimelineItems'
 import SidePanel from './SidePanel'
 import PhotoGallery from './PhotoGallery'
+import PhotoLightbox from './PhotoLightbox'
 
 // Leaflet's default marker icon references relative image paths that resolve fine when its CSS
 // is served as-is, but break once a bundler (Vite here) rewrites asset URLs — the icon silently
@@ -418,6 +419,14 @@ function TrackDetail({
   const [photoDataUri, setPhotoDataUri] = useState<string | null>(null)
   const [photoDataLoading, setPhotoDataLoading] = useState(false)
   const [photoDataError, setPhotoDataError] = useState('')
+
+  // A gallery-opened photo, entirely separate from `selectedItem` above — that state drives the
+  // map-overlay photo view (pans/centers the map, rings the marker), which is the right behavior
+  // for a map pin click but not for browsing the gallery grid underneath the map.
+  const [lightboxPhotoId, setLightboxPhotoId] = useState<number | null>(null)
+  const [lightboxDataUri, setLightboxDataUri] = useState<string | null>(null)
+  const [lightboxDataLoading, setLightboxDataLoading] = useState(false)
+  const [lightboxDataError, setLightboxDataError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -859,6 +868,70 @@ function TrackDetail({
     }
   }, [selectedPhoto])
 
+  const lightboxPhoto =
+    lightboxPhotoId !== null ? (orderedPhotos.find((p) => p.id === lightboxPhotoId) ?? null) : null
+  const lightboxIndex = lightboxPhoto
+    ? orderedPhotos.findIndex((p) => p.id === lightboxPhoto.id)
+    : -1
+  const lightboxPrev =
+    lightboxIndex > 0 ? () => setLightboxPhotoId(orderedPhotos[lightboxIndex - 1].id) : null
+  const lightboxNext =
+    lightboxIndex >= 0 && lightboxIndex < orderedPhotos.length - 1
+      ? () => setLightboxPhotoId(orderedPhotos[lightboxIndex + 1].id)
+      : null
+
+  // Mirrors the selectedPhoto data-URI fetch above, just keyed off the lightbox's own photo
+  // instead — the renderer can't read arbitrary local files itself, so this shows a loading state
+  // while the main process reads the file and hands it back over IPC.
+  useEffect(() => {
+    if (!lightboxPhoto) {
+      setLightboxDataUri(null)
+      setLightboxDataError('')
+      return
+    }
+    let cancelled = false
+    setLightboxDataUri(null)
+    setLightboxDataError('')
+    setLightboxDataLoading(true)
+    window.api.photos
+      .getDataUri(lightboxPhoto.id)
+      .then((uri) => {
+        if (!cancelled) setLightboxDataUri(uri)
+      })
+      .catch((err) => {
+        if (!cancelled) setLightboxDataError(cleanErrorMessage(err))
+      })
+      .finally(() => {
+        if (!cancelled) setLightboxDataLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [lightboxPhoto])
+
+  // Escape closes the lightbox; left/right arrow keys step through it, same as the map overlay's
+  // own arrow-key navigation above (and under the same guard against hijacking a focused input).
+  useEffect(() => {
+    if (!lightboxPhoto) return
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setLightboxPhotoId(null)
+        return
+      }
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const nextIndex = e.key === 'ArrowLeft' ? lightboxIndex - 1 : lightboxIndex + 1
+      if (nextIndex < 0 || nextIndex >= orderedPhotos.length) return
+      e.preventDefault()
+      setLightboxPhotoId(orderedPhotos[nextIndex].id)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [lightboxPhoto, lightboxIndex, orderedPhotos])
+
   // The photo overlay covers the right half of the map — pan so the photo's own green marker
   // stays centered in the remaining visible (left) half instead of sitting under the overlay or
   // off-center. Reverts to wherever the map was centered before the overlay opened once it closes
@@ -1281,7 +1354,7 @@ function TrackDetail({
 
         <PhotoGallery
           photos={photos}
-          onOpenPhoto={(photoId) => setSelectedItem({ kind: 'photo', id: photoId })}
+          onOpenPhoto={(photoId) => setLightboxPhotoId(photoId)}
           onCaptionSaved={(updated) =>
             setPhotos((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
           }
@@ -1464,6 +1537,18 @@ function TrackDetail({
             {selectedMessage.lat.toFixed(5)}, {selectedMessage.lng.toFixed(5)}
           </p>
         </SidePanel>
+      )}
+
+      {lightboxPhoto && (
+        <PhotoLightbox
+          photo={lightboxPhoto}
+          dataUri={lightboxDataUri}
+          loading={lightboxDataLoading}
+          error={lightboxDataError}
+          onClose={() => setLightboxPhotoId(null)}
+          onPrev={lightboxPrev}
+          onNext={lightboxNext}
+        />
       )}
     </div>
   )

@@ -1506,3 +1506,86 @@ button:disabled {
 .how-to-reftable tr:last-child td {
   border-bottom: none;
 }
+
+/* ---------- Photo lightbox ---------- */
+
+/* Covers the whole window — above every other overlay (dropdown menus, tooltips, the map's own
+   photo overlay) since it can be opened from the gallery regardless of what else is on screen. */
+.photo-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.9);
+  padding: 48px;
+  cursor: zoom-out;
+}
+
+.photo-lightbox-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 100%;
+  max-height: 100%;
+  cursor: default;
+}
+
+.photo-lightbox-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 160px);
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.photo-lightbox-caption {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--ev-c-white);
+  font-size: 14px;
+  text-align: center;
+}
+
+.photo-lightbox-close,
+.photo-lightbox-nav {
+  position: fixed;
+  z-index: 2001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: var(--ev-c-white);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.photo-lightbox-close:hover,
+.photo-lightbox-nav:hover {
+  background-color: rgba(255, 255, 255, 0.24);
+}
+
+.photo-lightbox-close {
+  top: 24px;
+  right: 24px;
+}
+
+.photo-lightbox-nav {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.photo-lightbox-prev {
+  left: 24px;
+}
+
+.photo-lightbox-next {
+  right: 24px;
+}
