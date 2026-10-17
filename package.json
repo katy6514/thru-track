@@ -4,6 +4,7 @@
   "description": "Local-first trail journal reconstruction app",
   "main": "./out/main/index.js",
   "author": "katy6514",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "format": "prettier --write .",
