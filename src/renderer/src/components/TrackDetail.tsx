@@ -28,6 +28,7 @@ import {
 import SidePanel from './SidePanel'
 import PhotoGallery from './PhotoGallery'
 import PhotoLightbox from './PhotoLightbox'
+import { PhotoIcon, MessageIcon, PhoneIcon } from '../icons'
 
 // Leaflet's default marker icon references relative image paths that resolve fine when its CSS
 // is served as-is, but break once a bundler (Vite here) rewrites asset URLs — the icon silently
@@ -399,22 +400,6 @@ function TrackDetail({
   const [importingMessages, setImportingMessages] = useState(false)
   const [messageError, setMessageError] = useState('')
 
-  // The journal/photos/messages actions collapse into one "Add data" button that pops this menu
-  // open, mirroring the track list's "Add track" menu (see TrackList.tsx).
-  const [showAddDataMenu, setShowAddDataMenu] = useState(false)
-  const addDataMenuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!showAddDataMenu) return
-    const handleClickOutside = (e: MouseEvent): void => {
-      if (addDataMenuRef.current && !addDataMenuRef.current.contains(e.target as Node)) {
-        setShowAddDataMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showAddDataMenu])
-
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null)
   const [photoDataUri, setPhotoDataUri] = useState<string | null>(null)
   const [photoDataLoading, setPhotoDataLoading] = useState(false)
@@ -461,7 +446,6 @@ function TrackDetail({
     window.api.photoUpload.stop()
     setPhoneUploadSession(null)
     setPhoneUploadError('')
-    setShowAddDataMenu(false)
 
     Promise.all([
       window.api.tracks.getPoints(track.id),
@@ -1036,29 +1020,28 @@ function TrackDetail({
         </button>
 
         <div className="track-header-info">
-          <div className="track-day-nav">
-            {previousTrack && (
-              <button
-                type="button"
-                className="track-day-nav-button"
-                onClick={() => onOpenTrack(previousTrack.id)}
-              >
-                &larr; {formatTrackDate(previousTrack.date)}
-              </button>
-            )}
-            {nextTrack && (
-              <button
-                type="button"
-                className="track-day-nav-button track-day-nav-button-next"
-                onClick={() => onOpenTrack(nextTrack.id)}
-              >
-                {formatTrackDate(nextTrack.date)} &rarr;
-              </button>
-            )}
-          </div>
-
           <div className="track-title-card">
             <p className="track-date">{formatTrackDate(track.date)}</p>
+            <div className="track-date-nav">
+              {previousTrack && (
+                <button
+                  type="button"
+                  className="track-date-nav-button track-date-nav-button-prev"
+                  onClick={() => onOpenTrack(previousTrack.id)}
+                >
+                  &larr; {formatTrackDate(previousTrack.date)}
+                </button>
+              )}
+              {nextTrack && (
+                <button
+                  type="button"
+                  className="track-date-nav-button track-date-nav-button-next"
+                  onClick={() => onOpenTrack(nextTrack.id)}
+                >
+                  {formatTrackDate(nextTrack.date)} &rarr;
+                </button>
+              )}
+            </div>
             <div className="track-title-row">
               <h1>
                 <EditableField
@@ -1071,6 +1054,19 @@ function TrackDetail({
                 />
               </h1>
               <div className="track-title-card-actions">
+                <button
+                  type="button"
+                  className="track-jump-to-journal-link"
+                  onClick={() => {
+                    journalPreviewRef.current?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center'
+                    })
+                    handleStartEditingJournal()
+                  }}
+                >
+                  Jump to journal entry
+                </button>
                 {points !== null && (
                   <button
                     type="button"
@@ -1080,71 +1076,6 @@ function TrackDetail({
                     {editingTrackInfo ? 'Done' : 'Edit'}
                   </button>
                 )}
-                <div className="dropdown-menu" ref={addDataMenuRef}>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddDataMenu((v) => !v)}
-                    disabled={
-                      importingPhotos ||
-                      !!pendingOffsetImport ||
-                      importingMessages ||
-                      startingPhoneUpload
-                    }
-                  >
-                    {importingPhotos
-                      ? 'Importing photos…'
-                      : importingMessages
-                        ? 'Importing…'
-                        : startingPhoneUpload
-                          ? 'Starting…'
-                          : 'Add data ▾'}
-                  </button>
-                  {showAddDataMenu && (
-                    <div className="dropdown-menu-options dropdown-menu-options-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddDataMenu(false)
-                          journalPreviewRef.current?.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'center'
-                          })
-                          handleStartEditingJournal()
-                        }}
-                      >
-                        Jump to journal entry
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddDataMenu(false)
-                          handleImportPhotos()
-                        }}
-                      >
-                        Import photos…
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddDataMenu(false)
-                          handleImportMessages()
-                        }}
-                      >
-                        Import messages (CSV)…
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAddDataMenu(false)
-                          handleStartPhoneUpload()
-                        }}
-                        disabled={!!phoneUploadSession}
-                      >
-                        Upload photos from phone…
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 
@@ -1200,6 +1131,62 @@ function TrackDetail({
                 </dd>
               </div>
             </dl>
+
+            {/* Below the content it belongs to (the page opens with "what day is this", not a
+                toolbar), and icon-only with a native tooltip rather than always-visible text
+                labels — these are used once per track and then rarely again, so they don't need
+                the permanent real estate four full labels would take. Each still respects the
+                old single-trigger's "only one import at a time" disable rule. */}
+            <div className="track-add-data-actions">
+              <button
+                type="button"
+                className="track-add-data-action"
+                onClick={handleImportPhotos}
+                disabled={
+                  importingPhotos ||
+                  !!pendingOffsetImport ||
+                  importingMessages ||
+                  startingPhoneUpload
+                }
+                title={importingPhotos ? 'Importing photos…' : 'Import photos…'}
+                aria-label={importingPhotos ? 'Importing photos…' : 'Import photos'}
+              >
+                <PhotoIcon />
+              </button>
+              <button
+                type="button"
+                className="track-add-data-action"
+                onClick={handleImportMessages}
+                disabled={
+                  importingPhotos ||
+                  !!pendingOffsetImport ||
+                  importingMessages ||
+                  startingPhoneUpload
+                }
+                title={importingMessages ? 'Importing…' : 'Import messages (CSV)…'}
+                aria-label={importingMessages ? 'Importing messages…' : 'Import messages (CSV)'}
+              >
+                <MessageIcon />
+              </button>
+              <button
+                type="button"
+                className="track-add-data-action"
+                onClick={handleStartPhoneUpload}
+                disabled={
+                  importingPhotos ||
+                  !!pendingOffsetImport ||
+                  importingMessages ||
+                  startingPhoneUpload ||
+                  !!phoneUploadSession
+                }
+                title={startingPhoneUpload ? 'Starting…' : 'Upload photos from phone…'}
+                aria-label={
+                  startingPhoneUpload ? 'Starting phone upload…' : 'Upload photos from phone'
+                }
+              >
+                <PhoneIcon />
+              </button>
+            </div>
           </div>
         </div>
 

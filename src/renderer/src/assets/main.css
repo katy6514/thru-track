@@ -534,8 +534,8 @@ button:disabled {
   margin: 0;
 }
 
-/* The date subheading now sits inside .track-title-card, directly above the title row — scoped
-   to .track-detail rather than changed on .track-date itself so that other usage (e.g. next to a
+/* The date subheading sits inside .track-title-card, directly above the title row — scoped to
+   .track-detail rather than changed on .track-date itself so that other usage (e.g. next to a
    track's name in TrackList's row listing) is untouched. */
 .track-detail .track-date {
   margin: 0 0 8px;
@@ -544,20 +544,67 @@ button:disabled {
   font-weight: 600;
 }
 
-/* Previous day / next day, flanking opposite ends of the row — a missing button on either side
-   (the first or last day of a trip, or a trip with only one track) just leaves that side empty. */
-.track-day-nav {
+/* Previous/next day, directly under the date they act on rather than a separate strip elsewhere
+   on the page. Plain text links (no fill/border) — secondary navigation, not an action on the
+   same visual footing as the page's real buttons. */
+.track-date-nav {
   display: flex;
-  justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
 }
 
-/* space-between only keeps the next button on the right when both buttons are present — on the
-   first day of a trip, where the previous button is absent, next would otherwise fall back to
-   the row's start (left) side as the lone flex child. */
-.track-day-nav-button-next {
-  margin-left: auto;
+.track-date-nav-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.track-date-nav-button:hover {
+  background: none;
+  color: var(--color-text);
+}
+
+/* One icon-labeled button per add-data action (journal/photos/messages/phone upload), replacing
+   the old single "Add data" dropdown trigger — a lighter, bordered treatment rather than each
+   one being a solid-fill pill, so a row of four doesn't read as four equally loud calls to
+   action next to the page's one real primary action (Edit). */
+.track-add-data-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ev-c-gray-2);
+}
+
+/* Icon-only, with the action name as a native tooltip (title/aria-label) rather than a permanent
+   text label — these are used once per track and then rarely again, so they don't need the same
+   amount of visible real estate as the title card's content above them. */
+.track-add-data-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background-color: var(--color-background);
+  border: 1px solid var(--ev-c-gray-2);
+  color: var(--ev-c-text-2);
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+
+.track-add-data-action:hover {
+  background-color: var(--color-background);
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.track-add-data-action svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
 }
 
 .track-header-info {
@@ -565,9 +612,8 @@ button:disabled {
   margin-bottom: 24px;
 }
 
-/* Groups the title and the metadata table as one visual unit, same soft-card treatment as
-   .journal-preview below — distinct from .track-day-nav above it, which is a navigation strip
-   rather than content about this specific day. */
+/* Groups the day's date/nav, title, stats, and add-data actions as one card — same soft-card
+   treatment as .journal-preview below. */
 .track-title-card {
   padding: 20px 24px;
   background-color: var(--color-background);
@@ -588,8 +634,24 @@ button:disabled {
 .track-title-card-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
   flex-shrink: 0;
+}
+
+/* A same-page anchor, not a data action — plain text like .back-link/.track-date-nav-button
+   rather than grouped visually with the Edit button or the add-data icons below. */
+.track-jump-to-journal-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ev-c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.track-jump-to-journal-link:hover {
+  background: none;
+  color: var(--color-text);
 }
 
 .track-title-input {
